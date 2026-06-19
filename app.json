@@ -30,6 +30,12 @@
     "plugins": ["expo-notifications"],
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8b851851-3740-4249-997f-b2976d943b6a"
+      }
+    },
+    "owner": "baicie"
   }
 }
