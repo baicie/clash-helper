@@ -1,11 +1,21 @@
 import type { NotificationMode, VillageRecord, VillageTimer } from '../types'
-import * as Notifications from 'expo-notifications'
+import { cancelAllScheduledNotificationsAsync } from 'expo-notifications/build/cancelAllScheduledNotificationsAsync'
+import { cancelScheduledNotificationAsync } from 'expo-notifications/build/cancelScheduledNotificationAsync'
+import {
+  AndroidImportance,
+  AndroidNotificationVisibility,
+} from 'expo-notifications/build/NotificationChannelManager.types'
+import { requestPermissionsAsync } from 'expo-notifications/build/NotificationPermissions'
+import { SchedulableTriggerInputTypes } from 'expo-notifications/build/Notifications.types'
+import { setNotificationHandler } from 'expo-notifications/build/NotificationsHandler'
+import { scheduleNotificationAsync } from 'expo-notifications/build/scheduleNotificationAsync'
+import { setNotificationChannelAsync } from 'expo-notifications/build/setNotificationChannelAsync'
 import { Platform } from 'react-native'
 
 const ALARM_CHANNEL_ID = 'clash-helper-alarm'
 const NORMAL_CHANNEL_ID = 'clash-helper-normal'
 
-Notifications.setNotificationHandler({
+setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldShowList: true,
@@ -15,23 +25,23 @@ Notifications.setNotificationHandler({
 })
 
 export async function initNotifications() {
-  const permission = await Notifications.requestPermissionsAsync()
+  const permission = await requestPermissionsAsync()
 
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync(ALARM_CHANNEL_ID, {
+    await setNotificationChannelAsync(ALARM_CHANNEL_ID, {
       name: 'Clash Helper 闹钟提醒',
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: AndroidImportance.HIGH,
       sound: 'default',
       vibrationPattern: [0, 300, 200, 300, 200, 600],
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      lockscreenVisibility: AndroidNotificationVisibility.PUBLIC,
     })
 
-    await Notifications.setNotificationChannelAsync(NORMAL_CHANNEL_ID, {
+    await setNotificationChannelAsync(NORMAL_CHANNEL_ID, {
       name: 'Clash Helper 普通提醒',
-      importance: Notifications.AndroidImportance.DEFAULT,
+      importance: AndroidImportance.DEFAULT,
       sound: 'default',
       vibrationPattern: [0, 200],
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      lockscreenVisibility: AndroidNotificationVisibility.PUBLIC,
     })
   }
 
@@ -55,7 +65,7 @@ export async function scheduleTimerNotification(params: {
 
   const channelId = mode === 'alarm' ? ALARM_CHANNEL_ID : NORMAL_CHANNEL_ID
 
-  return Notifications.scheduleNotificationAsync({
+  return scheduleNotificationAsync({
     content: {
       title: mode === 'alarm' ? '部落冲突升级完成' : 'Clash Helper 提醒',
       body: `${village.name}：${timer.title} 已完成`,
@@ -70,7 +80,7 @@ export async function scheduleTimerNotification(params: {
       },
     },
     trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      type: SchedulableTriggerInputTypes.DATE,
       date: new Date(timer.endAt),
       channelId,
     },
@@ -83,7 +93,7 @@ export async function cancelTimerNotification(timer: VillageTimer) {
   }
 
   try {
-    await Notifications.cancelScheduledNotificationAsync(timer.notificationId)
+    await cancelScheduledNotificationAsync(timer.notificationId)
   } catch {
     // 通知可能已经触发，或者被系统清理；这里忽略即可。
   }
@@ -94,7 +104,7 @@ export async function cancelVillageNotifications(village: VillageRecord) {
 }
 
 export async function cancelAllNotifications() {
-  await Notifications.cancelAllScheduledNotificationsAsync()
+  await cancelAllScheduledNotificationsAsync()
 }
 
 export async function scheduleVillageNotifications(
