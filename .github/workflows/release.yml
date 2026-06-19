@@ -153,7 +153,7 @@ jobs:
             --message "Release ${{ steps.vars.outputs.tag }} android from ${GITHUB_SHA}" \
             > dist/eas-android.json
 
-          node scripts/download-eas-build-artifacts.mjs \
+          pnpm publish:artifacts \
             dist/eas-android.json \
             dist \
             "${{ steps.vars.outputs.prefix }}"
@@ -172,7 +172,7 @@ jobs:
             --message "Release ${{ steps.vars.outputs.tag }} ios from ${GITHUB_SHA}" \
             > dist/eas-ios.json
 
-          node scripts/download-eas-build-artifacts.mjs \
+          pnpm publish:artifacts \
             dist/eas-ios.json \
             dist \
             "${{ steps.vars.outputs.prefix }}"

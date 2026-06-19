@@ -20,6 +20,11 @@
     "check": "pnpm type-check && pnpm lint && pnpm format:check && pnpm test",
     "clean": "rimraf .expo dist coverage node_modules",
     "postinstall": "simple-git-hooks",
+    "release": "tsx scripts/release.ts",
+    "release:dry": "tsx scripts/release.ts --dry",
+    "release:publish": "tsx scripts/publish.ts",
+    "publish:artifacts": "tsx scripts/publish.ts",
+    "verify:message": "node scripts/verify-commit.mjs",
     "eas:build:android": "eas build --platform android --profile internal",
     "eas:build:ios": "eas build --platform ios --profile internal",
     "eas:build:all": "eas build --platform all --profile internal"
@@ -40,10 +45,12 @@
     "@antfu/eslint-config": "^9.0.0",
     "@babel/core": "^7.25.2",
     "@baicie/release": "^0.3.3",
+    "@baicie/scripts": "^0.1.2",
     "@eslint-react/eslint-plugin": "^5.9.0",
     "@react-native/jest-preset": "0.85.3",
     "@testing-library/react-native": "^14.0.0",
     "@types/jest": "^29.5.14",
+    "@types/node": "^26.0.0",
     "@types/react": "~19.2.2",
     "@types/react-test-renderer": "^19.1.0",
     "eslint": "^10.5.0",
@@ -66,7 +73,7 @@
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged && pnpm type-check",
-    "commit-msg": "node scripts/verify-commit.mjs"
+    "commit-msg": "pnpm verify:message $1"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [

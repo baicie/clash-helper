@@ -288,6 +288,9 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
     gap: 4,
   },
+  timerSummary: {
+    gap: 4,
+  },
   timerDone: {
     opacity: 0.62,
     backgroundColor: '#f9fafb',
@@ -298,7 +301,10 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   timerControls: {
-    marginTop: 4,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
     gap: 6,
   },
   leftText: {
@@ -382,6 +388,7 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now())
   const [isImporting, setIsImporting] = useState(false)
   const [renameState, setRenameState] = useState<RenameState | null>(null)
+  const [expandedTimerId, setExpandedTimerId] = useState<string>()
 
   useEffect(() => {
     initNotifications().catch(() => {
@@ -968,6 +975,12 @@ export default function App() {
                         key={timer.id}
                         timer={timer}
                         now={now}
+                        expanded={expandedTimerId === timer.id}
+                        onToggleSettings={() =>
+                          setExpandedTimerId((current) =>
+                            current === timer.id ? undefined : timer.id,
+                          )
+                        }
                         onChangeReminderLead={(value) =>
                           handleChangeTimerReminderLead(
                             selectedVillage,
@@ -1149,14 +1162,15 @@ function ModeSelector(props: {
 function TimerCard(props: {
   timer: VillageTimer
   now: number
+  expanded?: boolean
+  onToggleSettings?: () => void
   onChangeReminderLead?: (value: string) => void
   onCreateSystemTimer?: () => void
 }) {
   const leftMs = props.timer.endAt - props.now
   const done = leftMs <= 0
-
-  return (
-    <View style={[styles.timerItem, done && styles.timerDone]}>
+  const summary = (
+    <>
       <Text style={styles.timerTitle}>{props.timer.title}</Text>
       <Text style={done ? styles.doneText : styles.leftText}>
         {formatDuration(leftMs)}
@@ -1169,6 +1183,27 @@ function TimerCard(props: {
         {props.timer.notificationId ? '已设置本地提醒' : '未设置本地提醒'}
       </Text>
       {!done && props.onChangeReminderLead ? (
+        <Text style={styles.primaryText}>
+          {props.expanded ? '收起项目设置' : '展开项目设置'}
+        </Text>
+      ) : null}
+    </>
+  )
+
+  return (
+    <View style={[styles.timerItem, done && styles.timerDone]}>
+      {!done && props.onToggleSettings ? (
+        <Pressable
+          testID={`timer-summary-${props.timer.id}`}
+          onPress={props.onToggleSettings}
+          style={styles.timerSummary}
+        >
+          {summary}
+        </Pressable>
+      ) : (
+        <View style={styles.timerSummary}>{summary}</View>
+      )}
+      {!done && props.expanded && props.onChangeReminderLead ? (
         <View style={styles.timerControls}>
           <Text style={styles.muted}>提前提醒</Text>
           <View style={styles.inputRow}>
@@ -1183,19 +1218,22 @@ function TimerCard(props: {
             />
             <Text style={styles.muted}>分钟</Text>
           </View>
+          {props.timer.systemTimerId ? (
+            <Text style={styles.muted}>已创建系统计时器</Text>
+          ) : null}
+          {props.onCreateSystemTimer ? (
+            <Pressable
+              testID={`system-timer-button-${props.timer.id}`}
+              onPress={props.onCreateSystemTimer}
+              style={styles.outlineButton}
+            >
+              <Text style={styles.outlineButtonText}>创建系统计时器</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
-      {props.timer.systemTimerId ? (
+      {!done && !props.expanded && props.timer.systemTimerId ? (
         <Text style={styles.muted}>已创建系统计时器</Text>
-      ) : null}
-      {!done && props.onCreateSystemTimer ? (
-        <Pressable
-          testID={`system-timer-button-${props.timer.id}`}
-          onPress={props.onCreateSystemTimer}
-          style={styles.outlineButton}
-        >
-          <Text style={styles.outlineButtonText}>创建系统计时器</Text>
-        </Pressable>
       ) : null}
     </View>
   )
