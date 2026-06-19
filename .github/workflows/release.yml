@@ -7,9 +7,8 @@ on:
         description: Build platform
         type: choice
         required: true
-        default: all
+        default: android
         options:
-          - all
           - android
           - ios
       profile:
@@ -129,7 +128,7 @@ jobs:
 
           PLATFORM="${{ inputs.platform }}"
           if [ -z "${PLATFORM}" ]; then
-            PLATFORM="all"
+            PLATFORM="android"
           fi
 
           PROFILE="${{ inputs.profile }}"
@@ -144,7 +143,7 @@ jobs:
           echo "prefix=clash-helper-${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Build Android APK with EAS
-        if: ${{ steps.vars.outputs.platform == 'all' || steps.vars.outputs.platform == 'android' }}
+        if: ${{ steps.vars.outputs.platform == 'android' }}
         shell: bash
         run: |
           mkdir -p dist
@@ -162,24 +161,24 @@ jobs:
             dist \
             "${{ steps.vars.outputs.prefix }}"
 
-      - name: Build iOS IPA with EAS
-        if: ${{ steps.vars.outputs.platform == 'all' || steps.vars.outputs.platform == 'ios' }}
-        shell: bash
-        run: |
-          mkdir -p dist
-          eas build \
-            --platform ios \
-            --profile "${{ steps.vars.outputs.profile }}" \
-            --wait \
-            --json \
-            --non-interactive \
-            --message "Release ${{ steps.vars.outputs.tag }} ios from ${GITHUB_SHA}" \
-            > dist/eas-ios.json
-
-          pnpm publish:artifacts \
-            dist/eas-ios.json \
-            dist \
-            "${{ steps.vars.outputs.prefix }}"
+      # - name: Build iOS IPA with EAS
+      #   if: ${{ steps.vars.outputs.platform == 'all' || steps.vars.outputs.platform == 'ios' }}
+      #   shell: bash
+      #   run: |
+      #     mkdir -p dist
+      #     eas build \
+      #       --platform ios \
+      #       --profile "${{ steps.vars.outputs.profile }}" \
+      #       --wait \
+      #       --json \
+      #       --non-interactive \
+      #       --message "Release ${{ steps.vars.outputs.tag }} ios from ${GITHUB_SHA}" \
+      #       > dist/eas-ios.json
+      #
+      #     pnpm publish:artifacts \
+      #       dist/eas-ios.json \
+      #       dist \
+      #       "${{ steps.vars.outputs.prefix }}"
 
       - name: List release files
         shell: bash
