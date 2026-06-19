@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 
 import {
   Alert,
-  Button,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -96,6 +95,25 @@ const styles = StyleSheet.create({
     color: '#111827',
     textAlignVertical: 'top',
     backgroundColor: '#f9fafb',
+  },
+  importButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  importButtonDisabled: {
+    backgroundColor: '#93c5fd',
+  },
+  importButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  importButtonTextDisabled: {
+    color: '#dbeafe',
   },
   muted: {
     fontSize: 12,
@@ -289,7 +307,11 @@ export default function App() {
       )
 
       if (existing) {
-        await cancelVillageNotifications(existing)
+        try {
+          await cancelVillageNotifications(existing)
+        } catch {
+          // 取消旧通知失败不影响新导入
+        }
       }
 
       const village = createVillageFromExport(exported, {
@@ -297,7 +319,13 @@ export default function App() {
         notificationMode: defaultNotificationMode,
       })
 
-      const scheduledVillage = await scheduleVillageNotifications(village)
+      let scheduledVillage = village
+      try {
+        scheduledVillage = await scheduleVillageNotifications(village)
+      } catch {
+        // 通知排期失败不影响保存村庄数据
+      }
+
       const nextVillages = upsertVillage(villages, scheduledVillage)
 
       await persist(nextVillages)
@@ -361,7 +389,13 @@ export default function App() {
       updatedAt: Date.now(),
     }
 
-    const scheduled = await rescheduleVillageNotifications(updated)
+    let scheduled = updated
+    try {
+      scheduled = await rescheduleVillageNotifications(updated)
+    } catch {
+      // 通知排期失败不影响模式切换
+    }
+
     const nextVillages = updateVillage(villages, village.id, () => scheduled)
 
     await persist(nextVillages)
@@ -377,7 +411,11 @@ export default function App() {
         text: '删除',
         style: 'destructive',
         onPress: async () => {
-          await cancelVillageNotifications(village)
+          try {
+            await cancelVillageNotifications(village)
+          } catch {
+            // ignore
+          }
 
           const nextVillages = removeVillage(villages, village.id)
 
@@ -415,8 +453,16 @@ export default function App() {
           text: '清空',
           style: 'destructive',
           onPress: async () => {
-            await cancelAllNotifications()
-            await clearVillages()
+            try {
+              await cancelAllNotifications()
+            } catch {
+              // ignore
+            }
+            try {
+              await clearVillages()
+            } catch {
+              // ignore
+            }
 
             setVillages([])
             setSelectedVillageId(undefined)
@@ -461,11 +507,23 @@ export default function App() {
             autoCorrect={false}
             style={styles.input}
           />
-          <Button
-            title={isImporting ? '正在解析...' : '解析并保存'}
-            disabled={isImporting}
+          <Pressable
             onPress={handleImportVillage}
-          />
+            disabled={isImporting}
+            style={[
+              styles.importButton,
+              isImporting && styles.importButtonDisabled,
+            ]}
+          >
+            <Text
+              style={[
+                styles.importButtonText,
+                isImporting && styles.importButtonTextDisabled,
+              ]}
+            >
+              {isImporting ? '正在解析...' : '解析并保存'}
+            </Text>
+          </Pressable>
         </View>
 
         <View style={styles.card}>
