@@ -5,37 +5,53 @@ import { Platform } from 'react-native'
 const ALARM_CHANNEL_ID = 'clash-helper-alarm'
 const NORMAL_CHANNEL_ID = 'clash-helper-normal'
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-})
-
-export async function initNotifications() {
-  const permission = await Notifications.requestPermissionsAsync()
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync(ALARM_CHANNEL_ID, {
-      name: 'Clash Helper 闹钟提醒',
-      importance: Notifications.AndroidImportance.HIGH,
-      sound: 'default',
-      vibrationPattern: [0, 300, 200, 300, 200, 600],
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+export async function initNotifications(): Promise<boolean> {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
     })
-
-    await Notifications.setNotificationChannelAsync(NORMAL_CHANNEL_ID, {
-      name: 'Clash Helper 普通提醒',
-      importance: Notifications.AndroidImportance.DEFAULT,
-      sound: 'default',
-      vibrationPattern: [0, 200],
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    })
+  } catch {
+    // Expo Go 等不支持的环境
   }
 
-  return permission.granted
+  let permissionGranted = false
+  try {
+    const permission = await Notifications.requestPermissionsAsync()
+    permissionGranted = permission.granted
+  } catch {
+    return false
+  }
+
+  if (Platform.OS === 'android') {
+    try {
+      await Notifications.setNotificationChannelAsync(ALARM_CHANNEL_ID, {
+        name: 'Clash Helper 闹钟提醒',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+        vibrationPattern: [0, 300, 200, 300, 200, 600],
+        lockscreenVisibility:
+          Notifications.AndroidNotificationVisibility.PUBLIC,
+      })
+
+      await Notifications.setNotificationChannelAsync(NORMAL_CHANNEL_ID, {
+        name: 'Clash Helper 普通提醒',
+        importance: Notifications.AndroidImportance.DEFAULT,
+        sound: 'default',
+        vibrationPattern: [0, 200],
+        lockscreenVisibility:
+          Notifications.AndroidNotificationVisibility.PUBLIC,
+      })
+    } catch {
+      // 设置通知渠道失败不影响功能
+    }
+  }
+
+  return permissionGranted
 }
 
 export async function cancelTimerNotification(timer: VillageTimer) {
@@ -46,23 +62,31 @@ export async function cancelTimerNotification(timer: VillageTimer) {
   try {
     await Notifications.cancelScheduledNotificationAsync(timer.notificationId)
   } catch {
-    // 通知可能已经触发或被系统清理，忽略即可。
+    // 通知可能已触发或被系统清理
   }
 }
 
 export async function cancelVillageNotifications(village: VillageRecord) {
-  await Promise.all(village.timers.map(cancelTimerNotification))
+  try {
+    await Promise.all(village.timers.map(cancelTimerNotification))
+  } catch {
+    // 忽略
+  }
 }
 
 export async function cancelAllNotifications() {
-  await Notifications.cancelAllScheduledNotificationsAsync()
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync()
+  } catch {
+    // 忽略
+  }
 }
 
 export async function scheduleTimerNotification(params: {
   village: VillageRecord
   timer: VillageTimer
   mode: NotificationMode
-}) {
+}): Promise<string | undefined> {
   const { village, timer, mode } = params
 
   if (mode === 'off') {
@@ -77,25 +101,29 @@ export async function scheduleTimerNotification(params: {
 
   const title = mode === 'alarm' ? '部落冲突升级完成' : 'Clash Helper 提醒'
 
-  return Notifications.scheduleNotificationAsync({
-    content: {
-      title,
-      body: `${village.name}：${timer.title} 已完成`,
-      sound: 'default',
-      data: {
-        villageId: village.id,
-        villageTag: village.tag,
-        timerId: timer.id,
-        sourceGroup: timer.sourceGroup,
-        endAt: timer.endAt,
+  try {
+    return await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body: `${village.name}：${timer.title} 已完成`,
+        sound: 'default',
+        data: {
+          villageId: village.id,
+          villageTag: village.tag,
+          timerId: timer.id,
+          sourceGroup: timer.sourceGroup,
+          endAt: timer.endAt,
+        },
       },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: new Date(timer.endAt),
-      channelId,
-    },
-  })
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(timer.endAt),
+        channelId,
+      },
+    })
+  } catch {
+    return undefined
+  }
 }
 
 export async function scheduleVillageNotifications(
