@@ -29,6 +29,7 @@ on:
   push:
     tags:
       - 'v*'
+      - 'clash-helper@*'
 
 permissions:
   contents: write
@@ -114,13 +115,16 @@ jobs:
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             TAG="${GITHUB_REF_NAME}"
-            VERSION="${TAG#v}"
+            # clash-helper@0.0.0-beta.0 -> 0.0.0-beta.0
+            VERSION="${TAG#*@}"
+            # remove v prefix if present
+            VERSION="${VERSION#v}"
           else
             VERSION="${{ inputs.version }}"
             if [ -z "${VERSION}" ]; then
               VERSION="0.0.0-${GITHUB_RUN_NUMBER}"
             fi
-            TAG="v${VERSION}"
+            TAG="clash-helper@${VERSION}"
           fi
 
           PLATFORM="${{ inputs.platform }}"
