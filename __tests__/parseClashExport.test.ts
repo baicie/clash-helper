@@ -1,0 +1,115 @@
+import {
+  createVillageFromExport,
+  getActiveTimers,
+  getDoneTimers,
+  parseClashVillageExportText,
+  parseTimersFromExport,
+} from '../src/clash/parseClashExport'
+
+const sample = {
+  tag: '#R2J0CRJYR',
+  timestamp: 1781860781,
+  helpers: [{ data: 93000001, lvl: 1, helper_cooldown: 8426 }],
+  buildings: [
+    { data: 1000001, lvl: 9, timer: 88982 },
+    { data: 1000006, lvl: 10, timer: 111356 },
+    { data: 1000000, lvl: 2, cnt: 1 },
+  ],
+  spells: [
+    {
+      data: 26000010,
+      lvl: 2,
+      timer: 8163,
+      helper_recurrent: true,
+    },
+  ],
+  buildings2: [
+    { data: 1000038, lvl: 5, timer: 70029 },
+    { data: 1000036, lvl: 5, timer: 77663 },
+  ],
+  units2: [{ data: 4000037, lvl: 8, timer: 13990 }],
+  boosts: {
+    clocktower_cooldown: 53156,
+  },
+}
+
+describe('parseClashExport', () => {
+  it('parses json text', () => {
+    const exported = parseClashVillageExportText(JSON.stringify(sample))
+
+    expect(exported.tag).toBe('#R2J0CRJYR')
+    expect(exported.timestamp).toBe(1781860781)
+  })
+
+  it('throws when json text is invalid', () => {
+    expect(() => parseClashVillageExportText('{')).toThrow('JSON 格式不正确')
+  })
+
+  it('parses timers from all supported groups', () => {
+    const timers = parseTimersFromExport(sample, '#R2J0CRJYR', 1781860781000)
+
+    expect(timers).toHaveLength(8)
+
+    expect(timers[0]).toMatchObject({
+      villageId: '#R2J0CRJYR',
+      sourceGroup: 'spells',
+      scope: 'home',
+      dataId: 26000010,
+      level: 2,
+      remainingSeconds: 8163,
+      endAt: (1781860781 + 8163) * 1000,
+    })
+
+    expect(timers.some((timer) => timer.title === '夜世界钟楼冷却')).toBe(true)
+
+    expect(timers.some((timer) => timer.sourceGroup === 'helpers')).toBe(true)
+  })
+
+  it('creates village record from export', () => {
+    const village = createVillageFromExport(sample, {
+      notificationMode: 'alarm',
+      importedAt: 1781860781000,
+    })
+
+    expect(village.id).toBe('#R2J0CRJYR')
+    expect(village.tag).toBe('#R2J0CRJYR')
+    expect(village.name).toBe('#R2J0CRJYR')
+    expect(village.notificationMode).toBe('alarm')
+    expect(village.timers).toHaveLength(8)
+  })
+
+  it('preserves existing village name and notification mode', () => {
+    const existing = createVillageFromExport(sample, {
+      notificationMode: 'notification',
+      importedAt: 1781860781000,
+    })
+
+    const updated = createVillageFromExport(sample, {
+      existing: {
+        ...existing,
+        name: '我的大号',
+        notificationMode: 'off',
+      },
+      notificationMode: 'alarm',
+      importedAt: 1781860782000,
+    })
+
+    expect(updated.name).toBe('我的大号')
+    expect(updated.notificationMode).toBe('off')
+  })
+
+  it('splits active and done timers', () => {
+    const village = createVillageFromExport(sample, {
+      importedAt: 1781860781000,
+    })
+
+    const nowBeforeAllDone = (1781860781 + 1) * 1000
+    const nowAfterFirstDone = (1781860781 + 9000) * 1000
+
+    expect(getActiveTimers(village, nowBeforeAllDone)).toHaveLength(8)
+    expect(getDoneTimers(village, nowBeforeAllDone)).toHaveLength(0)
+
+    expect(getDoneTimers(village, nowAfterFirstDone).length).toBeGreaterThan(0)
+    expect(getActiveTimers(village, nowAfterFirstDone).length).toBeLessThan(8)
+  })
+})

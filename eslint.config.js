@@ -20,6 +20,23 @@ export default defineConfig(
     files: ['**/*.test.{ts,tsx}'],
     rules: {
       'no-console': 'off',
+      'style/arrow-parens': 'off',
+    },
+  },
+  {
+    files: ['jest.setup.ts'],
+    rules: {
+      'ts/no-require-imports': 'off',
+    },
+  },
+  {
+    rules: {
+      'style/operator-linebreak': 'off',
+      'style/arrow-parens': 'off',
+      'style/brace-style': 'off',
+      'style/multiline-ternary': 'off',
+      'style/jsx-curly-newline': 'off',
+      'style/jsx-one-expression-per-line': 'off',
     },
   },
   {
@@ -28,6 +45,7 @@ export default defineConfig(
       'assets/**',
       'coverage/**',
       'dist/**',
+      'docs/**',
       'node_modules/**',
       'pnpm-lock.yaml',
     ],
