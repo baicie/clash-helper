@@ -7,10 +7,13 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.baicie.clashhelper",
+      "buildNumber": "1"
     },
     "android": {
       "package": "com.baicie.clashhelper",
+      "versionCode": 1,
       "permissions": ["POST_NOTIFICATIONS", "VIBRATE"],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",

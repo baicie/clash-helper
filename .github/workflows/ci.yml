@@ -7,8 +7,16 @@ on:
       - main
       - master
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
+    name: Quality
     runs-on: ubuntu-latest
 
     steps:
@@ -18,7 +26,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 11.3.0
+          version: 10.34.3
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

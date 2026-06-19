@@ -14,6 +14,8 @@ export default defineConfig(
     files: ['*.config.{js,ts}', 'scripts/**/*.{js,ts,mjs}'],
     rules: {
       'no-console': 'off',
+      'node/prefer-global/process': 'off',
+      'node/prefer-global/buffer': 'off',
     },
   },
   {

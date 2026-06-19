@@ -1,0 +1,223 @@
+name: Release App Installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Build platform
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - android
+          - ios
+      profile:
+        description: EAS build profile
+        type: choice
+        required: true
+        default: internal
+        options:
+          - internal
+          - android-internal
+          - ios-internal
+          - ios-simulator
+      version:
+        description: Release version without v prefix. Empty means 0.0.0-<run_number>
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 22
+  PNPM_VERSION: 10.34.3
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run checks
+        run: pnpm check
+
+  release:
+    name: Build and Release
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Expo token
+        shell: bash
+        run: |
+          if [ -z "${EXPO_TOKEN}" ]; then
+            echo "Missing GitHub secret: EXPO_TOKEN"
+            exit 1
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve release variables
+        id: vars
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+            VERSION="${TAG#v}"
+          else
+            VERSION="${{ inputs.version }}"
+            if [ -z "${VERSION}" ]; then
+              VERSION="0.0.0-${GITHUB_RUN_NUMBER}"
+            fi
+            TAG="v${VERSION}"
+          fi
+
+          PLATFORM="${{ inputs.platform }}"
+          if [ -z "${PLATFORM}" ]; then
+            PLATFORM="all"
+          fi
+
+          PROFILE="${{ inputs.profile }}"
+          if [ -z "${PROFILE}" ]; then
+            PROFILE="internal"
+          fi
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "platform=${PLATFORM}" >> "$GITHUB_OUTPUT"
+          echo "profile=${PROFILE}" >> "$GITHUB_OUTPUT"
+          echo "prefix=clash-helper-${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Android APK with EAS
+        if: ${{ steps.vars.outputs.platform == 'all' || steps.vars.outputs.platform == 'android' }}
+        shell: bash
+        run: |
+          mkdir -p dist
+          eas build \
+            --platform android \
+            --profile "${{ steps.vars.outputs.profile }}" \
+            --wait \
+            --json \
+            --non-interactive \
+            --message "Release ${{ steps.vars.outputs.tag }} android from ${GITHUB_SHA}" \
+            > dist/eas-android.json
+
+          node scripts/download-eas-build-artifacts.mjs \
+            dist/eas-android.json \
+            dist \
+            "${{ steps.vars.outputs.prefix }}"
+
+      - name: Build iOS IPA with EAS
+        if: ${{ steps.vars.outputs.platform == 'all' || steps.vars.outputs.platform == 'ios' }}
+        shell: bash
+        run: |
+          mkdir -p dist
+          eas build \
+            --platform ios \
+            --profile "${{ steps.vars.outputs.profile }}" \
+            --wait \
+            --json \
+            --non-interactive \
+            --message "Release ${{ steps.vars.outputs.tag }} ios from ${GITHUB_SHA}" \
+            > dist/eas-ios.json
+
+          node scripts/download-eas-build-artifacts.mjs \
+            dist/eas-ios.json \
+            dist \
+            "${{ steps.vars.outputs.prefix }}"
+
+      - name: List release files
+        shell: bash
+        run: |
+          find dist -maxdepth 1 -type f -print
+          ls -lah dist
+
+      - name: Create or update GitHub Release
+        shell: bash
+        run: |
+          shopt -s nullglob
+
+          ASSETS=(dist/*.apk dist/*.ipa dist/eas-*.json)
+
+          if [ "${#ASSETS[@]}" -eq 0 ]; then
+            echo "No release assets found"
+            exit 1
+          fi
+
+          NOTES_FILE="dist/release-notes.md"
+          cat > "${NOTES_FILE}" << 'EOF'
+          # Clash Helper ${{ steps.vars.outputs.tag }}
+
+          Commit: ${GITHUB_SHA}
+
+          ## Artifacts
+
+          - Android: APK for direct installation
+          - iOS: IPA for EAS internal distribution / ad hoc installation
+
+          ## Notes
+
+          - This release does not use remote push service.
+          - Countdown reminders are local notifications.
+          EOF
+
+          if gh release view "${{ steps.vars.outputs.tag }}" >/dev/null 2>&1; then
+            gh release upload "${{ steps.vars.outputs.tag }}" "${ASSETS[@]}" --clobber
+          else
+            gh release create "${{ steps.vars.outputs.tag }}" \
+              "${ASSETS[@]}" \
+              --target "${GITHUB_SHA}" \
+              --title "Clash Helper ${{ steps.vars.outputs.tag }}" \
+              --notes-file "${NOTES_FILE}"
+          fi

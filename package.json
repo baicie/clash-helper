@@ -1,5 +1,5 @@
 {
-  "name": "expo-template",
+  "name": "clash-helper",
   "type": "module",
   "version": "1.0.0",
   "private": true,
@@ -19,7 +19,10 @@
     "test": "jest --watchAll=false",
     "check": "pnpm type-check && pnpm lint && pnpm format:check && pnpm test",
     "clean": "rimraf .expo dist coverage node_modules",
-    "postinstall": "simple-git-hooks"
+    "postinstall": "simple-git-hooks",
+    "eas:build:android": "eas build --platform android --profile internal",
+    "eas:build:ios": "eas build --platform ios --profile internal",
+    "eas:build:all": "eas build --platform all --profile internal"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
