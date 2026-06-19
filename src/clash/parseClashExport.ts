@@ -7,7 +7,7 @@ import type {
   VillageScope,
   VillageTimer,
 } from '../types'
-import { getClashDataName } from './clashDataNames'
+import { formatClashDataId, getClashDataName } from './clashDataNames'
 import { normalizeTimestampSeconds } from './time'
 
 interface TimerGroupConfig {
@@ -77,13 +77,8 @@ function buildTimerId(params: {
 }
 
 function buildItemTitle(config: TimerGroupConfig, item: ClashExportItem) {
-  const name = getClashDataName(item.data)
-  const dataText = typeof item.data === 'number' ? `#${item.data}` : '未知 ID'
+  const dataText = formatClashDataId(item.data)
   const levelText = typeof item.lvl === 'number' ? ` Lv.${item.lvl}` : ''
-
-  if (name) {
-    return `${config.label} · ${name}${levelText}`
-  }
 
   return `${config.label} · ${dataText}${levelText}`
 }
@@ -120,6 +115,42 @@ function createTimer(params: {
     sourceTimestamp: params.sourceTimestamp,
     endAt,
   }
+}
+
+function buildTimerReminderKey(timer: VillageTimer) {
+  return [
+    timer.sourceGroup,
+    timer.dataId ?? 'unknown',
+    timer.level ?? 'unknown',
+    timer.title,
+  ].join(':')
+}
+
+function applyReminderLeadMinutes(
+  timers: VillageTimer[],
+  params: {
+    existing?: VillageRecord
+    defaultReminderLeadMinutes: number
+  },
+) {
+  const existingTimerLeadMinutes = new Map(
+    params.existing?.timers.map((timer) => [
+      buildTimerReminderKey(timer),
+      timer.reminderLeadMinutes,
+    ]) ?? [],
+  )
+
+  return timers.map((timer) => {
+    const existingLeadMinutes = existingTimerLeadMinutes.get(
+      buildTimerReminderKey(timer),
+    )
+
+    return {
+      ...timer,
+      reminderLeadMinutes:
+        existingLeadMinutes ?? params.defaultReminderLeadMinutes,
+    }
+  })
 }
 
 export function parseClashVillageExportText(text: string): ClashVillageExport {
@@ -238,6 +269,7 @@ export function createVillageFromExport(
   options?: {
     existing?: VillageRecord
     notificationMode?: NotificationMode
+    defaultReminderLeadMinutes?: number
     importedAt?: number
   },
 ): VillageRecord {
@@ -249,7 +281,17 @@ export function createVillageFromExport(
     importedAt,
   )
 
-  const timers = parseTimersFromExport(exported, tag, importedAt)
+  const defaultReminderLeadMinutes =
+    existing?.defaultReminderLeadMinutes ??
+    options?.defaultReminderLeadMinutes ??
+    0
+  const timers = applyReminderLeadMinutes(
+    parseTimersFromExport(exported, tag, importedAt),
+    {
+      existing,
+      defaultReminderLeadMinutes,
+    },
+  )
 
   return {
     id: tag,
@@ -261,6 +303,7 @@ export function createVillageFromExport(
     importedAt,
     notificationMode:
       existing?.notificationMode ?? options?.notificationMode ?? 'alarm',
+    defaultReminderLeadMinutes,
     timers,
   }
 }

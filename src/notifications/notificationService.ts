@@ -6,14 +6,22 @@ import {
   AndroidNotificationVisibility,
 } from 'expo-notifications/build/NotificationChannelManager.types'
 import { requestPermissionsAsync } from 'expo-notifications/build/NotificationPermissions'
-import { SchedulableTriggerInputTypes } from 'expo-notifications/build/Notifications.types'
+import {
+  AndroidNotificationPriority,
+  SchedulableTriggerInputTypes,
+} from 'expo-notifications/build/Notifications.types'
 import { setNotificationHandler } from 'expo-notifications/build/NotificationsHandler'
 import { scheduleNotificationAsync } from 'expo-notifications/build/scheduleNotificationAsync'
 import { setNotificationChannelAsync } from 'expo-notifications/build/setNotificationChannelAsync'
 import { Platform } from 'react-native'
 
-const ALARM_CHANNEL_ID = 'clash-helper-alarm'
-const NORMAL_CHANNEL_ID = 'clash-helper-normal'
+const ALARM_CHANNEL_ID = 'clash-helper-alarm-v2'
+const NORMAL_CHANNEL_ID = 'clash-helper-normal-v2'
+
+const ALARM_VIBRATION_PATTERN = [0, 600, 250, 600, 250, 900]
+const NORMAL_VIBRATION_PATTERN = [0, 250]
+
+let androidChannelsReady = Platform.OS !== 'android'
 
 setNotificationHandler({
   handleNotification: async () => ({
@@ -21,6 +29,7 @@ setNotificationHandler({
     shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    priority: AndroidNotificationPriority.MAX,
   }),
 })
 
@@ -28,24 +37,52 @@ export async function initNotifications() {
   const permission = await requestPermissionsAsync()
 
   if (Platform.OS === 'android') {
+    androidChannelsReady = await configureAndroidNotificationChannels()
+  }
+
+  return permission.granted
+}
+
+async function configureAndroidNotificationChannels() {
+  try {
     await setNotificationChannelAsync(ALARM_CHANNEL_ID, {
       name: 'Clash Helper 闹钟提醒',
-      importance: AndroidImportance.HIGH,
-      sound: 'default',
-      vibrationPattern: [0, 300, 200, 300, 200, 600],
+      importance: AndroidImportance.MAX,
+      vibrationPattern: ALARM_VIBRATION_PATTERN,
       lockscreenVisibility: AndroidNotificationVisibility.PUBLIC,
+      enableVibrate: true,
     })
 
     await setNotificationChannelAsync(NORMAL_CHANNEL_ID, {
       name: 'Clash Helper 普通提醒',
       importance: AndroidImportance.DEFAULT,
-      sound: 'default',
-      vibrationPattern: [0, 200],
+      vibrationPattern: NORMAL_VIBRATION_PATTERN,
       lockscreenVisibility: AndroidNotificationVisibility.PUBLIC,
+      enableVibrate: true,
     })
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+function getNotificationChannelId(mode: NotificationMode) {
+  if (Platform.OS === 'android' && !androidChannelsReady) {
+    return undefined
   }
 
-  return permission.granted
+  return mode === 'alarm' ? ALARM_CHANNEL_ID : NORMAL_CHANNEL_ID
+}
+
+function getNotificationPriority(mode: NotificationMode) {
+  return mode === 'alarm'
+    ? AndroidNotificationPriority.MAX
+    : AndroidNotificationPriority.DEFAULT
+}
+
+function getVibrationPattern(mode: NotificationMode) {
+  return mode === 'alarm' ? ALARM_VIBRATION_PATTERN : NORMAL_VIBRATION_PATTERN
 }
 
 export async function scheduleTimerNotification(params: {
@@ -59,17 +96,25 @@ export async function scheduleTimerNotification(params: {
     return undefined
   }
 
-  if (timer.endAt <= Date.now()) {
+  const reminderLeadMinutes = timer.reminderLeadMinutes ?? 0
+  const triggerAt = timer.endAt - reminderLeadMinutes * 60 * 1000
+
+  if (triggerAt <= Date.now()) {
     return undefined
   }
 
-  const channelId = mode === 'alarm' ? ALARM_CHANNEL_ID : NORMAL_CHANNEL_ID
+  const channelId = getNotificationChannelId(mode)
 
   return scheduleNotificationAsync({
     content: {
-      title: mode === 'alarm' ? '部落冲突升级完成' : 'Clash Helper 提醒',
-      body: `${village.name}：${timer.title} 已完成`,
+      title: mode === 'alarm' ? '部落冲突升级提醒' : 'Clash Helper 提醒',
+      body:
+        reminderLeadMinutes > 0
+          ? `${village.name}：${timer.title} 将在 ${reminderLeadMinutes} 分钟后完成`
+          : `${village.name}：${timer.title} 已完成`,
       sound: 'default',
+      priority: getNotificationPriority(mode),
+      vibrate: getVibrationPattern(mode),
       data: {
         type: 'local_timer_done',
         villageId: village.id,
@@ -77,12 +122,48 @@ export async function scheduleTimerNotification(params: {
         timerId: timer.id,
         sourceGroup: timer.sourceGroup,
         endAt: timer.endAt,
+        reminderLeadMinutes,
       },
     },
     trigger: {
       type: SchedulableTriggerInputTypes.DATE,
-      date: new Date(timer.endAt),
-      channelId,
+      date: new Date(triggerAt),
+      ...(channelId ? { channelId } : {}),
+    },
+  })
+}
+
+export async function scheduleTestNotification(params: {
+  mode: NotificationMode
+  seconds?: number
+}) {
+  const seconds = Math.max(1, Math.floor(params.seconds ?? 5))
+
+  if (params.mode === 'off') {
+    return undefined
+  }
+
+  const channelId = getNotificationChannelId(params.mode)
+
+  return scheduleNotificationAsync({
+    content: {
+      title:
+        params.mode === 'alarm'
+          ? 'Clash Helper 闹钟测试'
+          : 'Clash Helper 通知测试',
+      body: `这是一条 ${seconds} 秒后的测试提醒`,
+      sound: 'default',
+      priority: getNotificationPriority(params.mode),
+      vibrate: getVibrationPattern(params.mode),
+      data: {
+        type: 'local_test_notification',
+        mode: params.mode,
+      },
+    },
+    trigger: {
+      type: SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds,
+      ...(channelId ? { channelId } : {}),
     },
   })
 }

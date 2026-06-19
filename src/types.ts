@@ -1,5 +1,10 @@
 export type NotificationMode = 'alarm' | 'notification' | 'off'
 
+export interface AppSettings {
+  defaultNotificationMode: NotificationMode
+  defaultReminderLeadMinutes: number
+}
+
 export type VillageScope = 'home' | 'builder' | 'system'
 
 export type TimerSourceGroup =
@@ -73,6 +78,10 @@ export interface VillageTimer {
   endAt: number
 
   notificationId?: string
+  reminderLeadMinutes?: number
+
+  systemTimerId?: string
+  systemTimerCreatedAt?: number
 }
 
 export interface VillageRecord {
@@ -86,6 +95,7 @@ export interface VillageRecord {
   importedAt: number
 
   notificationMode: NotificationMode
+  defaultReminderLeadMinutes?: number
 
   timers: VillageTimer[]
 }

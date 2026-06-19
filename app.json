@@ -14,7 +14,11 @@
     "android": {
       "package": "com.baicie.clashhelper",
       "versionCode": 1,
-      "permissions": ["POST_NOTIFICATIONS", "VIBRATE"],
+      "permissions": [
+        "POST_NOTIFICATIONS",
+        "VIBRATE",
+        "com.android.alarm.permission.SET_ALARM"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
