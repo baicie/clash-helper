@@ -1,6 +1,14 @@
 shellEmulator: true
 
-trustPolicy: off
+trustPolicy: no-downgrade
+
+# Force-resolve the transitive `semver@6.3.1` (pulled in via
+# @babel/plugin-transform-runtime) to a version with provenance attestation.
+# `pnpm/yaml-enforce-settings` requires `trustPolicy: no-downgrade`, but
+# `semver@6.3.1` lacks trust evidence, so pnpm refuses to install it.
+# The 6 -> 7 major bump is API-compatible for babel's usage.
+overrides:
+  semver: ^7.6.3
 
 allowBuilds:
   simple-git-hooks: set this to true or false
