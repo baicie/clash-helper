@@ -646,7 +646,7 @@ export default function App() {
         const result = await createSystemAlarmBatch(
           plan.alarmsToCreate.map((timer) => ({
             id: timer.id,
-            message: `${updated.name}：${timer.title} 已完成`,
+            message: timer.title,
             endAt: timer.endAt,
             skipUi: true,
           })),
@@ -1134,7 +1134,7 @@ export default function App() {
       const result = await createSystemAlarmBatch(
         eligibleTimers.map((timer) => ({
           id: timer.id,
-          message: `${village.name}：${timer.title} 已完成`,
+          message: timer.title,
           endAt: timer.endAt,
           skipUi: true,
         })),

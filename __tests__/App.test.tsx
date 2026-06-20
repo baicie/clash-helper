@@ -273,7 +273,7 @@ describe('app smoke tests', () => {
       'android.intent.action.SET_ALARM',
       expect.objectContaining({
         extra: expect.objectContaining({
-          'android.intent.extra.alarm.MESSAGE': '测试村庄：项目一 已完成',
+          'android.intent.extra.alarm.MESSAGE': '项目一',
           'android.intent.extra.alarm.SKIP_UI': true,
         }),
       }),

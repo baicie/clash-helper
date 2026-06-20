@@ -7,7 +7,7 @@ import type {
   VillageScope,
   VillageTimer,
 } from '../types'
-import { formatClashDataId, getClashDataName } from './clashDataNames'
+import { getClashDataName } from './clashDataNames'
 import { normalizeTimestampSeconds } from './time'
 
 interface TimerGroupConfig {
@@ -77,10 +77,13 @@ function buildTimerId(params: {
 }
 
 function buildItemTitle(config: TimerGroupConfig, item: ClashExportItem) {
-  const dataText = formatClashDataId(item.data)
+  // Use the Chinese name so the title reads cleanly both in the village list
+  // and in the Android system clock (which truncates long labels). The raw
+  // dataId is still available on `VillageTimer.dataId` for any future need.
+  const nameText = getClashDataName(item.data) ?? `#${item.data}`
   const levelText = typeof item.lvl === 'number' ? ` Lv.${item.lvl}` : ''
 
-  return `${config.label} · ${dataText}${levelText}`
+  return `${config.label} · ${nameText}${levelText}`
 }
 
 function createTimer(params: {

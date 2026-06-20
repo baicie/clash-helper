@@ -132,6 +132,42 @@ describe('parseClashExport', () => {
     expect(getActiveTimers(village, nowAfterFirstDone).length).toBeLessThan(8)
   })
 
+  it('uses a stable, project-name-shaped title so it can double as the alarm label', () => {
+    const timers = parseTimersFromExport(sample, '#R2J0CRJYR', 1781860781000)
+
+    const building = timers.find(
+      (timer) => timer.sourceGroup === 'buildings' && timer.dataId === 1000006,
+    )
+
+    // timer.title is what the app shows in the village list AND what we
+    // forward to the system clock as the alarm label, so they must match.
+    // Internal IDs are intentionally kept off the title (still available on
+    // VillageTimer.dataId) so the system clock app — which truncates long
+    // labels — stays readable.
+    expect(building?.title).toBe('主世界建筑 · 训练营 Lv.10')
+
+    const helper = timers.find((timer) => timer.sourceGroup === 'helpers')
+    expect(helper?.title).toBe('助手冷却 · 助手')
+  })
+
+  it('falls back to #<id> when the clash data id is unknown', () => {
+    const timers = parseTimersFromExport(
+      {
+        ...sample,
+        buildings: [{ data: 999999999, lvl: 3, timer: 600 }],
+      },
+      '#R2J0CRJYR',
+      1781860781000,
+    )
+
+    const unknown = timers.find(
+      (timer) =>
+        timer.sourceGroup === 'buildings' && timer.dataId === 999999999,
+    )
+
+    expect(unknown?.title).toBe('主世界建筑 · #999999999 Lv.3')
+  })
+
   it('advances continuous countdown to the next nearest timer', () => {
     const village = createVillageFromExport(sample, {
       importedAt: 1781860781000,
