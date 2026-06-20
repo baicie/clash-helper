@@ -1,6 +1,6 @@
 shellEmulator: true
 
-trustPolicy: no-downgrade
+trustPolicy: off
 
 allowBuilds:
   simple-git-hooks: set this to true or false

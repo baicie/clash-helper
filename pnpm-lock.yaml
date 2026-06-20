@@ -46,8 +46,8 @@ importers:
         specifier: ^7.25.2
         version: 7.29.7
       '@baicie/release':
-        specifier: ^0.3.3
-        version: 0.3.3(conventional-commits-filter@5.0.0)
+        specifier: ^0.4.0
+        version: 0.4.0(conventional-commits-filter@5.0.0)
       '@baicie/scripts':
         specifier: ^0.1.2
         version: 0.1.2
@@ -590,8 +590,8 @@ packages:
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
 
-  '@baicie/release@0.3.3':
-    resolution: {integrity: sha512-R3AnodCJeTMEVvtOAOL3LvX/eF5vNu2S3gqL4HXvRcF43EagMmcJGfOGW2J6uoCiUgJp8hv4zqlqzkAinYDtJw==}
+  '@baicie/release@0.4.0':
+    resolution: {integrity: sha512-6o1qQmqVr9K8neZ8t1JFRGRMlDZcOfdpPypW6LVE9EvEMwGdA3RCRaAZZp5O5mpqOhMRMLm2rzD318Jy6wRHwQ==}
     engines: {node: '>=18'}
 
   '@baicie/scripts@0.1.2':
@@ -5629,7 +5629,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@baicie/release@0.3.3(conventional-commits-filter@5.0.0)':
+  '@baicie/release@0.4.0(conventional-commits-filter@5.0.0)':
     dependencies:
       conventional-changelog: 7.2.0(conventional-commits-filter@5.0.0)
       conventional-changelog-conventionalcommits: 9.3.1
