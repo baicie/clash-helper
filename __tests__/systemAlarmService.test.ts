@@ -3,6 +3,8 @@ import * as IntentLauncher from 'expo-intent-launcher'
 import {
   buildSystemAlarmIntentParams,
   createSystemAlarm,
+  createSystemAlarmBatch,
+  createSystemCountdownTimer,
   getSystemAlarmTarget,
   isSetAlarmPermissionError,
   isSystemAlarmSupported,
@@ -82,6 +84,48 @@ describe('systemAlarmService', () => {
         },
       },
     )
+  })
+
+  it('creates an Android system countdown timer', async () => {
+    const id = await createSystemCountdownTimer(
+      {
+        message: '下一个升级',
+        endAt: 61_000,
+      },
+      {
+        now: 1_000,
+        platform: 'android',
+      },
+    )
+
+    expect(id).toBe('system-timer:61000:60')
+    expect(IntentLauncher.startActivityAsync).toHaveBeenCalledWith(
+      'android.intent.action.SET_TIMER',
+      {
+        extra: {
+          'android.intent.extra.alarm.LENGTH': 60,
+          'android.intent.extra.alarm.MESSAGE': '下一个升级',
+          'android.intent.extra.alarm.SKIP_UI': true,
+        },
+      },
+    )
+  })
+
+  it('creates system alarms in a batch', async () => {
+    const result = await createSystemAlarmBatch(
+      [
+        { id: 'one', message: '项目一', endAt: 61_000 },
+        { id: 'two', message: '项目二', endAt: 121_000 },
+      ],
+      { now: 1_000, platform: 'android' },
+    )
+
+    expect(result.created).toEqual([
+      { id: 'one', systemAlarmId: 'system-alarm:120000' },
+      { id: 'two', systemAlarmId: 'system-alarm:180000' },
+    ])
+    expect(result.failed).toEqual([])
+    expect(IntentLauncher.startActivityAsync).toHaveBeenCalledTimes(2)
   })
 
   it('throws on unsupported platform', async () => {

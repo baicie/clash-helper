@@ -1,14 +1,53 @@
-import { fireEvent, render } from '@testing-library/react-native'
+import type { NotificationMode, VillageRecord } from '../src/types'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { fireEvent, render, waitFor } from '@testing-library/react-native'
 import * as IntentLauncher from 'expo-intent-launcher'
 import { Alert, Platform } from 'react-native'
 
 import App from '../App'
+import { saveVillages } from '../src/storage/villageStore'
 
 const originalPlatformOS = Platform.OS
 const startActivityAsyncMock = jest.mocked(IntentLauncher.startActivityAsync)
 
+function createVillage(notificationMode: NotificationMode): VillageRecord {
+  return {
+    id: '#TEST',
+    tag: '#TEST',
+    name: '测试村庄',
+    sourceTimestamp: 1,
+    createdAt: 1,
+    updatedAt: 1,
+    importedAt: 1,
+    notificationMode,
+    timers: [
+      {
+        id: 'timer-one',
+        villageId: '#TEST',
+        sourceGroup: 'buildings',
+        scope: 'home',
+        title: '项目一',
+        remainingSeconds: 60,
+        sourceTimestamp: 1,
+        endAt: 61_000,
+      },
+      {
+        id: 'timer-two',
+        villageId: '#TEST',
+        sourceGroup: 'heroes',
+        scope: 'home',
+        title: '项目二',
+        remainingSeconds: 120,
+        sourceTimestamp: 1,
+        endAt: 121_000,
+      },
+    ],
+  }
+}
+
 describe('app smoke tests', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await AsyncStorage.clear()
     jest.clearAllMocks()
     jest.spyOn(Alert, 'alert').mockImplementation(() => undefined)
   })
@@ -109,13 +148,65 @@ describe('app smoke tests', () => {
           'android.intent.extra.alarm.HOUR': new Date(60_000).getHours(),
           'android.intent.extra.alarm.MINUTES': new Date(60_000).getMinutes(),
           'android.intent.extra.alarm.MESSAGE': 'Clash Helper 闹钟测试',
-          'android.intent.extra.alarm.SKIP_UI': false,
+          'android.intent.extra.alarm.SKIP_UI': true,
         },
       },
     )
   })
 
-  it('opens the system clock when Expo Go cannot create a system timer', async () => {
+  it('starts the nearest Android system timer in continuous mode', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+    jest.spyOn(Date, 'now').mockReturnValue(1_000)
+    await saveVillages([createVillage('countdown')])
+
+    await render(<App />)
+
+    await waitFor(() =>
+      expect(IntentLauncher.startActivityAsync).toHaveBeenCalledWith(
+        'android.intent.action.SET_TIMER',
+        {
+          extra: {
+            'android.intent.extra.alarm.LENGTH': 60,
+            'android.intent.extra.alarm.MESSAGE': '测试村庄：项目一',
+            'android.intent.extra.alarm.SKIP_UI': true,
+          },
+        },
+      ),
+    )
+  })
+
+  it('creates all eligible system alarms from the village action', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+    jest.spyOn(Date, 'now').mockReturnValue(1_000)
+    await saveVillages([createVillage('alarm')])
+
+    const screen = await render(<App />)
+    const button = await screen.findByTestId('create-all-system-alarms-button')
+
+    await fireEvent.press(button)
+
+    await waitFor(() =>
+      expect(IntentLauncher.startActivityAsync).toHaveBeenCalledTimes(2),
+    )
+    expect(IntentLauncher.startActivityAsync).toHaveBeenNthCalledWith(
+      1,
+      'android.intent.action.SET_ALARM',
+      expect.objectContaining({
+        extra: expect.objectContaining({
+          'android.intent.extra.alarm.MESSAGE': '测试村庄：项目一 已完成',
+          'android.intent.extra.alarm.SKIP_UI': true,
+        }),
+      }),
+    )
+  })
+
+  it('opens the system clock when Expo Go cannot create a system alarm', async () => {
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       value: 'android',

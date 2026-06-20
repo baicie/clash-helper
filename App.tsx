@@ -1,6 +1,6 @@
 import type { NotificationMode, VillageRecord, VillageTimer } from './src/types'
 import { StatusBar } from 'expo-status-bar'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   LogBox,
@@ -49,6 +49,8 @@ import {
 } from './src/system/backgroundReliabilityService'
 import {
   createSystemAlarm,
+  createSystemAlarmBatch,
+  createSystemCountdownTimer,
   isSetAlarmPermissionError,
   openSystemAlarmApp,
 } from './src/system/systemAlarmService'
@@ -410,6 +412,7 @@ export default function App() {
   const [isImporting, setIsImporting] = useState(false)
   const [renameState, setRenameState] = useState<RenameState | null>(null)
   const [expandedTimerId, setExpandedTimerId] = useState<string>()
+  const startingSystemTimerRef = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     initNotifications().catch(() => {
@@ -464,6 +467,69 @@ export default function App() {
 
     return getNextActiveTimer(selectedVillage, now)
   }, [now, selectedVillage])
+  const canCreateAllSystemAlarms =
+    Platform.OS === 'android' && selectedActiveTimers.length > 0
+
+  useEffect(() => {
+    if (
+      Platform.OS !== 'android' ||
+      !selectedVillage ||
+      selectedVillage.notificationMode !== 'countdown' ||
+      !selectedNextTimer ||
+      selectedNextTimer.systemTimerId
+    ) {
+      return
+    }
+
+    const startKey = `${selectedVillage.id}:${selectedNextTimer.id}`
+
+    if (startingSystemTimerRef.current === startKey) {
+      return
+    }
+
+    startingSystemTimerRef.current = startKey
+
+    createSystemCountdownTimer({
+      message: `${selectedVillage.name}：${selectedNextTimer.title}`,
+      endAt: selectedNextTimer.endAt,
+      skipUi: true,
+    })
+      .then((systemTimerId) => {
+        setVillages((currentVillages) => {
+          const nextVillages = updateVillage(
+            currentVillages,
+            selectedVillage.id,
+            (village) => ({
+              ...village,
+              updatedAt: Date.now(),
+              timers: village.timers.map((timer) =>
+                timer.id === selectedNextTimer.id
+                  ? {
+                      ...timer,
+                      systemTimerId,
+                      systemTimerStartedAt: Date.now(),
+                    }
+                  : timer,
+              ),
+            }),
+          )
+
+          saveVillages(nextVillages).catch(() => undefined)
+          return nextVillages
+        })
+      })
+      .catch((error: unknown) => {
+        Alert.alert(
+          '连续倒计时启动失败',
+          error instanceof Error ? error.message : '未知错误',
+        )
+      })
+      .finally(() => {
+        if (startingSystemTimerRef.current === startKey) {
+          startingSystemTimerRef.current = undefined
+        }
+      })
+  }, [selectedNextTimer, selectedVillage])
 
   async function persist(nextVillages: VillageRecord[]) {
     setVillages(nextVillages)
@@ -681,10 +747,10 @@ export default function App() {
         await createSystemAlarm({
           message: 'Clash Helper 闹钟测试',
           endAt: Date.now() + seconds * 1000,
-          skipUi: false,
+          skipUi: true,
         })
 
-        Alert.alert('闹钟测试已创建', '请在系统时钟页面中确认')
+        Alert.alert('闹钟测试已创建', '系统闹钟已自动添加')
         return
       }
 
@@ -834,6 +900,62 @@ export default function App() {
 
       Alert.alert(
         '创建系统闹钟失败',
+        error instanceof Error ? error.message : '未知错误',
+      )
+    }
+  }
+
+  async function handleCreateAllSystemAlarms(village: VillageRecord) {
+    const activeTimers = getActiveTimers(village, Date.now()).filter(
+      (timer) => !timer.systemAlarmId,
+    )
+
+    if (activeTimers.length === 0) {
+      Alert.alert('无需创建', '当前项目都已创建闹钟或已经结束')
+      return
+    }
+
+    try {
+      const result = await createSystemAlarmBatch(
+        activeTimers.map((timer) => ({
+          id: timer.id,
+          message: `${village.name}：${timer.title} 已完成`,
+          endAt: timer.endAt,
+          skipUi: true,
+        })),
+      )
+      const createdByTimerId = new Map(
+        result.created.map((item) => [item.id, item.systemAlarmId]),
+      )
+      const createdAt = Date.now()
+      const nextVillages = updateVillage(villages, village.id, (item) => ({
+        ...item,
+        updatedAt: createdAt,
+        timers: item.timers.map((timer) => {
+          const systemAlarmId = createdByTimerId.get(timer.id)
+
+          return systemAlarmId
+            ? { ...timer, systemAlarmId, systemAlarmCreatedAt: createdAt }
+            : timer
+        }),
+      }))
+
+      await persist(nextVillages)
+      Alert.alert(
+        '批量创建完成',
+        `已创建 ${result.created.length} 个闹钟，跳过 ${result.failed.length} 个项目`,
+      )
+    } catch (error) {
+      if (isSetAlarmPermissionError(error)) {
+        Alert.alert(
+          '需要开发构建',
+          'Expo Go 没有批量创建系统闹钟的权限，请使用开发构建或正式安装包。',
+        )
+        return
+      }
+
+      Alert.alert(
+        '批量创建闹钟失败',
         error instanceof Error ? error.message : '未知错误',
       )
     }
@@ -1005,6 +1127,16 @@ export default function App() {
                   }
                 />
 
+                {canCreateAllSystemAlarms ? (
+                  <Pressable
+                    testID="create-all-system-alarms-button"
+                    onPress={() => handleCreateAllSystemAlarms(selectedVillage)}
+                    style={styles.outlineButton}
+                  >
+                    <Text style={styles.outlineButtonText}>批量创建闹钟</Text>
+                  </Pressable>
+                ) : null}
+
                 {selectedNextTimer ? (
                   <View
                     testID="continuous-countdown"
@@ -1021,6 +1153,11 @@ export default function App() {
                     </Text>
                     <Text style={styles.muted}>
                       剩余 {selectedActiveTimers.length} 个项目
+                    </Text>
+                    <Text style={styles.muted}>
+                      {selectedNextTimer.systemTimerId
+                        ? '系统倒计时已启动'
+                        : '正在启动系统倒计时'}
                     </Text>
                   </View>
                 ) : null}

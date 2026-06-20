@@ -82,6 +82,8 @@ export interface VillageTimer {
 
   systemAlarmId?: string
   systemAlarmCreatedAt?: number
+  systemTimerId?: string
+  systemTimerStartedAt?: number
 }
 
 export interface VillageRecord {
