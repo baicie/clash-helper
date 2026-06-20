@@ -29,8 +29,25 @@ describe('app smoke tests', () => {
   it('renders default notification mode selector', async () => {
     const screen = await render(<App />)
     expect(screen.getByText('闹钟提醒')).toBeTruthy()
+    expect(screen.getByText('连续倒计时')).toBeTruthy()
     expect(screen.getByText('普通通知')).toBeTruthy()
     expect(screen.getByText('关闭提醒')).toBeTruthy()
+  })
+
+  it('renders Android background reliability settings', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+
+    const screen = await render(<App />)
+
+    await fireEvent.press(screen.getByTestId('menu-button'))
+    await fireEvent.press(screen.getByTestId('menu-view-settings'))
+
+    expect(screen.getByTestId('open-auto-start-settings-button')).toBeTruthy()
+    expect(screen.getByTestId('open-battery-settings-button')).toBeTruthy()
+    expect(screen.getByTestId('open-notification-settings-button')).toBeTruthy()
   })
 
   it('renders import section', async () => {
@@ -72,7 +89,7 @@ describe('app smoke tests', () => {
     )
   })
 
-  it('creates an Android system timer for alarm test mode', async () => {
+  it('creates an Android system alarm for alarm test mode', async () => {
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       value: 'android',
@@ -86,10 +103,11 @@ describe('app smoke tests', () => {
     await fireEvent.press(screen.getByTestId('run-test-notification-button'))
 
     expect(IntentLauncher.startActivityAsync).toHaveBeenCalledWith(
-      'android.intent.action.SET_TIMER',
+      'android.intent.action.SET_ALARM',
       {
         extra: {
-          'android.intent.extra.alarm.LENGTH': 5,
+          'android.intent.extra.alarm.HOUR': new Date(60_000).getHours(),
+          'android.intent.extra.alarm.MINUTES': new Date(60_000).getMinutes(),
           'android.intent.extra.alarm.MESSAGE': 'Clash Helper 闹钟测试',
           'android.intent.extra.alarm.SKIP_UI': false,
         },

@@ -2,6 +2,7 @@ import {
   createVillageFromExport,
   getActiveTimers,
   getDoneTimers,
+  getNextActiveTimer,
   parseClashVillageExportText,
   parseTimersFromExport,
 } from '../src/clash/parseClashExport'
@@ -111,5 +112,19 @@ describe('parseClashExport', () => {
 
     expect(getDoneTimers(village, nowAfterFirstDone).length).toBeGreaterThan(0)
     expect(getActiveTimers(village, nowAfterFirstDone).length).toBeLessThan(8)
+  })
+
+  it('advances continuous countdown to the next nearest timer', () => {
+    const village = createVillageFromExport(sample, {
+      importedAt: 1781860781000,
+    })
+    const timersByEndAt = [...village.timers].sort(
+      (left, right) => left.endAt - right.endAt,
+    )
+    const first = timersByEndAt[0]
+    const second = timersByEndAt[1]
+
+    expect(getNextActiveTimer(village, first.endAt - 1)?.id).toBe(first.id)
+    expect(getNextActiveTimer(village, first.endAt)?.id).toBe(second.id)
   })
 })

@@ -3,8 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 
 import {
   clearVillages,
+  loadSettings,
   loadVillages,
   removeVillage,
+  saveSettings,
   saveVillages,
   updateVillage,
   upsertVillage,
@@ -31,6 +33,18 @@ describe('villageStore', () => {
 
   it('loads empty list by default', async () => {
     await expect(loadVillages()).resolves.toEqual([])
+  })
+
+  it('persists continuous countdown as the default reminder mode', async () => {
+    await saveSettings({
+      defaultNotificationMode: 'countdown',
+      defaultReminderLeadMinutes: 0,
+    })
+
+    await expect(loadSettings()).resolves.toEqual({
+      defaultNotificationMode: 'countdown',
+      defaultReminderLeadMinutes: 0,
+    })
   })
 
   it('saves and loads villages', async () => {

@@ -312,6 +312,19 @@ export function getActiveTimers(village: VillageRecord, now = Date.now()) {
   return village.timers.filter((timer) => timer.endAt > now)
 }
 
+export function getNextActiveTimer(village: VillageRecord, now = Date.now()) {
+  return getActiveTimers(village, now).reduce<VillageTimer | undefined>(
+    (nearest, timer) => {
+      if (!nearest || timer.endAt < nearest.endAt) {
+        return timer
+      }
+
+      return nearest
+    },
+    undefined,
+  )
+}
+
 export function getDoneTimers(village: VillageRecord, now = Date.now()) {
   return village.timers.filter((timer) => timer.endAt <= now)
 }

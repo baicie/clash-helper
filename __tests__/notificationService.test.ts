@@ -81,6 +81,27 @@ describe('notificationService', () => {
     )
   })
 
+  it('uses alarm priority for continuous countdown notifications', async () => {
+    const timer = createTimer()
+    const village = createVillage(timer)
+
+    await scheduleTimerNotification({
+      village,
+      timer,
+      mode: 'countdown',
+    })
+
+    expect(scheduleNotificationAsyncMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          title: '连续倒计时完成',
+          priority: 'max',
+          vibrate: [0, 600, 250, 600, 250, 900],
+        }),
+      }),
+    )
+  })
+
   it('configures alarm channels for sound and vibration without custom sound casting', async () => {
     Object.defineProperty(Platform, 'OS', {
       configurable: true,

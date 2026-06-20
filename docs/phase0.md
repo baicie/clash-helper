@@ -9,6 +9,7 @@
 4. 同一 tag 再次导入时覆盖更新，并保留村庄昵称和提醒模式
 5. 每个村庄可独立切换：
    - 闹钟提醒 alarm
+   - 连续倒计时 countdown
    - 普通通知 notification
    - 关闭提醒 off
 6. 倒计时完成后发本地通知
@@ -16,10 +17,15 @@
 8. 切换提醒模式时取消旧通知并重新排期
 9. 支持已完成任务展示和一键清理
 10. 支持 dataId 中文名称映射扩展，但不强行猜未知 ID
+11. Android 可为未来 24 小时内的项目创建系统闹钟
+12. 提供荣耀 MagicOS、小米 HyperOS 自启动、电池优化和通知权限入口
+13. 连续倒计时自动选择最近完成项目，并在结束后切换到下一个
 ```
 
 本地倒计时通知不需要服务端；Expo 的 `expo-notifications` 支持本地一次性定时通知。远程推送才需要 Expo Push Token、FCM/APNs 或后端调用推送接口。([Expo Documentation][2])
-另外，Android 真正的“精确闹钟”会碰到 Android 12/14 的 exact alarm 权限限制，新装应用在 Android 14 上通常不会默认授予 `SCHEDULE_EXACT_ALARM`，所以这版先做“闹钟风格的高优先级本地通知”。后续要做到系统闹钟级别，再进入原生 AlarmManager。([Android Developers][3])
+自动排期仍使用“闹钟风格的高优先级本地通知”。Android 用户还可以通过系统 `ACTION_SET_ALARM` Intent 创建真正的系统闹钟；该标准 Intent 只能表达小时和分钟，不能指定日历日期，因此应用只允许为未来 24 小时内的项目创建系统闹钟。更长期且需要精确日期的系统级闹钟仍需原生 AlarmManager。([Android Developers][3])
+
+应用不依赖持续运行的 JavaScript 进程保活。`expo-notifications` 的 Android 原生模块声明了 `RECEIVE_BOOT_COMPLETED` 并在设备重启后恢复通知排期；系统闹钟由系统时钟持有。设置页提供荣耀和小米的自启动管理入口，并提供标准 Android 电池优化与通知权限入口；厂商系统页面不可用时会回退到应用详情设置。
 
 ---
 
@@ -1698,7 +1704,8 @@ pnpm android
 
 ```txt
 Phase 1 当前这版：
-本地多村庄 + JSON 解析 + 本地通知 + 提醒模式切换
+本地多村庄 + JSON 解析 + 本地通知 + 系统闹钟
+荣耀/小米自启动、电池优化和通知权限入口
 
 Phase 2：
 补 dataId 中文映射表
@@ -1710,7 +1717,7 @@ Phase 3：
 Phase 4：
 做真正 Android AlarmManager 原生模块
 支持跳系统 exact alarm 权限页
-提升国产安卓后台可靠性
+支持超过 24 小时且带日历日期的系统级精确闹钟
 
 Phase 5：
 再考虑服务端账号、云同步、Expo Push / FCM

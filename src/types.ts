@@ -1,4 +1,4 @@
-export type NotificationMode = 'alarm' | 'notification' | 'off'
+export type NotificationMode = 'alarm' | 'countdown' | 'notification' | 'off'
 
 export interface AppSettings {
   defaultNotificationMode: NotificationMode
@@ -80,8 +80,8 @@ export interface VillageTimer {
   notificationId?: string
   reminderLeadMinutes?: number
 
-  systemTimerId?: string
-  systemTimerCreatedAt?: number
+  systemAlarmId?: string
+  systemAlarmCreatedAt?: number
 }
 
 export interface VillageRecord {

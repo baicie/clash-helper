@@ -72,17 +72,21 @@ function getNotificationChannelId(mode: NotificationMode) {
     return undefined
   }
 
-  return mode === 'alarm' ? ALARM_CHANNEL_ID : NORMAL_CHANNEL_ID
+  return isUrgentMode(mode) ? ALARM_CHANNEL_ID : NORMAL_CHANNEL_ID
 }
 
 function getNotificationPriority(mode: NotificationMode) {
-  return mode === 'alarm'
+  return isUrgentMode(mode)
     ? AndroidNotificationPriority.MAX
     : AndroidNotificationPriority.DEFAULT
 }
 
 function getVibrationPattern(mode: NotificationMode) {
-  return mode === 'alarm' ? ALARM_VIBRATION_PATTERN : NORMAL_VIBRATION_PATTERN
+  return isUrgentMode(mode) ? ALARM_VIBRATION_PATTERN : NORMAL_VIBRATION_PATTERN
+}
+
+function isUrgentMode(mode: NotificationMode) {
+  return mode === 'alarm' || mode === 'countdown'
 }
 
 export async function scheduleTimerNotification(params: {
@@ -107,7 +111,12 @@ export async function scheduleTimerNotification(params: {
 
   return scheduleNotificationAsync({
     content: {
-      title: mode === 'alarm' ? '部落冲突升级提醒' : 'Clash Helper 提醒',
+      title:
+        mode === 'alarm'
+          ? '部落冲突升级提醒'
+          : mode === 'countdown'
+            ? '连续倒计时完成'
+            : 'Clash Helper 提醒',
       body:
         reminderLeadMinutes > 0
           ? `${village.name}：${timer.title} 将在 ${reminderLeadMinutes} 分钟后完成`
@@ -150,7 +159,9 @@ export async function scheduleTestNotification(params: {
       title:
         params.mode === 'alarm'
           ? 'Clash Helper 闹钟测试'
-          : 'Clash Helper 通知测试',
+          : params.mode === 'countdown'
+            ? 'Clash Helper 连续倒计时测试'
+            : 'Clash Helper 通知测试',
       body: `这是一条 ${seconds} 秒后的测试提醒`,
       sound: 'default',
       priority: getNotificationPriority(params.mode),

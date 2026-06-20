@@ -31,6 +31,7 @@ function normalizeSettings(value: unknown): AppSettings {
   return {
     defaultNotificationMode:
       settings.defaultNotificationMode === 'alarm' ||
+      settings.defaultNotificationMode === 'countdown' ||
       settings.defaultNotificationMode === 'notification' ||
       settings.defaultNotificationMode === 'off'
         ? settings.defaultNotificationMode

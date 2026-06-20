@@ -1,11 +1,11 @@
 import * as IntentLauncher from 'expo-intent-launcher'
 
 import {
-  buildSystemTimerIntentParams,
-  createSystemCountdownTimer,
-  getRemainingSecondsForSystemTimer,
+  buildSystemAlarmIntentParams,
+  createSystemAlarm,
+  getSystemAlarmTarget,
   isSetAlarmPermissionError,
-  isSystemCountdownTimerSupported,
+  isSystemAlarmSupported,
   openSystemAlarmApp,
 } from '../src/system/systemAlarmService'
 
@@ -14,21 +14,29 @@ describe('systemAlarmService', () => {
     jest.clearAllMocks()
   })
 
-  it('calculates remaining seconds', () => {
-    expect(getRemainingSecondsForSystemTimer(2000, 1000)).toBe(1)
-    expect(getRemainingSecondsForSystemTimer(2500, 1000)).toBe(2)
+  it('rounds the target up to a whole minute', () => {
+    const endAt = new Date(2026, 0, 2, 7, 30, 15).getTime()
+
+    expect(getSystemAlarmTarget(endAt)).toEqual({
+      targetAt: new Date(2026, 0, 2, 7, 31).getTime(),
+      hour: 7,
+      minute: 31,
+    })
   })
 
-  it('builds Android timer intent params', () => {
+  it('builds Android alarm intent params and rounds up partial minutes', () => {
+    const endAt = new Date(2026, 0, 2, 7, 30, 15).getTime()
+
     expect(
-      buildSystemTimerIntentParams({
+      buildSystemAlarmIntentParams({
         message: '大本营完成',
-        seconds: 60,
+        endAt,
         skipUi: true,
       }),
     ).toEqual({
       extra: {
-        'android.intent.extra.alarm.LENGTH': 60,
+        'android.intent.extra.alarm.HOUR': 7,
+        'android.intent.extra.alarm.MINUTES': 31,
         'android.intent.extra.alarm.MESSAGE': '大本营完成',
         'android.intent.extra.alarm.SKIP_UI': true,
       },
@@ -36,8 +44,8 @@ describe('systemAlarmService', () => {
   })
 
   it('checks supported platform', () => {
-    expect(isSystemCountdownTimerSupported('android')).toBe(true)
-    expect(isSystemCountdownTimerSupported('ios')).toBe(false)
+    expect(isSystemAlarmSupported('android')).toBe(true)
+    expect(isSystemAlarmSupported('ios')).toBe(false)
   })
 
   it('detects Android SET_ALARM permission errors', () => {
@@ -49,24 +57,26 @@ describe('systemAlarmService', () => {
     expect(isSetAlarmPermissionError(new Error('other error'))).toBe(false)
   })
 
-  it('creates Android system countdown timer', async () => {
-    const id = await createSystemCountdownTimer(
+  it('creates an Android system alarm instead of a countdown timer', async () => {
+    const endAt = new Date(2026, 0, 2, 7, 30).getTime()
+    const id = await createSystemAlarm(
       {
         message: '大本营完成',
-        endAt: 61_000,
+        endAt,
       },
       {
-        now: 1_000,
+        now: endAt - 60_000,
         platform: 'android',
       },
     )
 
-    expect(id).toBe('system-timer:61000:60')
+    expect(id).toBe(`system-alarm:${endAt}`)
     expect(IntentLauncher.startActivityAsync).toHaveBeenCalledWith(
-      'android.intent.action.SET_TIMER',
+      'android.intent.action.SET_ALARM',
       {
         extra: {
-          'android.intent.extra.alarm.LENGTH': 60,
+          'android.intent.extra.alarm.HOUR': 7,
+          'android.intent.extra.alarm.MINUTES': 30,
           'android.intent.extra.alarm.MESSAGE': '大本营完成',
           'android.intent.extra.alarm.SKIP_UI': true,
         },
@@ -76,7 +86,7 @@ describe('systemAlarmService', () => {
 
   it('throws on unsupported platform', async () => {
     await expect(
-      createSystemCountdownTimer(
+      createSystemAlarm(
         {
           message: '大本营完成',
           endAt: 61_000,
@@ -86,12 +96,12 @@ describe('systemAlarmService', () => {
           platform: 'ios',
         },
       ),
-    ).rejects.toThrow('系统计时器目前只支持 Android')
+    ).rejects.toThrow('系统闹钟目前只支持 Android')
   })
 
   it('throws when timer is done', async () => {
     await expect(
-      createSystemCountdownTimer(
+      createSystemAlarm(
         {
           message: '大本营完成',
           endAt: 1_000,
@@ -102,6 +112,21 @@ describe('systemAlarmService', () => {
         },
       ),
     ).rejects.toThrow('该倒计时已经结束')
+  })
+
+  it('rejects alarms more than 24 hours away', async () => {
+    await expect(
+      createSystemAlarm(
+        {
+          message: '大本营完成',
+          endAt: 24 * 60 * 60 * 1000 + 1,
+        },
+        {
+          now: 0,
+          platform: 'android',
+        },
+      ),
+    ).rejects.toThrow('未来 24 小时内')
   })
   it('falls back through system clock open actions', async () => {
     const startActivityAsyncMock = jest.mocked(
@@ -119,7 +144,7 @@ describe('systemAlarmService', () => {
     )
     expect(IntentLauncher.startActivityAsync).toHaveBeenNthCalledWith(
       2,
-      'android.intent.action.SHOW_TIMERS',
+      'android.intent.action.SET_ALARM',
     )
   })
 })

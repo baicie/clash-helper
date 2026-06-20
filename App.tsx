@@ -19,6 +19,7 @@ import {
   createVillageFromExport,
   getActiveTimers,
   getDoneTimers,
+  getNextActiveTimer,
   parseClashVillageExportText,
 } from './src/clash/parseClashExport'
 import { formatDateTime, formatDuration } from './src/clash/time'
@@ -42,7 +43,12 @@ import {
   upsertVillage,
 } from './src/storage/villageStore'
 import {
-  createSystemCountdownTimer,
+  openAutoStartSettings,
+  openBatteryOptimizationSettings,
+  openNotificationSettings,
+} from './src/system/backgroundReliabilityService'
+import {
+  createSystemAlarm,
   isSetAlarmPermissionError,
   openSystemAlarmApp,
 } from './src/system/systemAlarmService'
@@ -53,12 +59,14 @@ type AppView = 'home' | 'settings' | 'test'
 
 const NOTIFICATION_MODE_LABEL: Record<NotificationMode, string> = {
   alarm: '闹钟提醒',
+  countdown: '连续倒计时',
   notification: '普通通知',
   off: '关闭提醒',
 }
 
 const NOTIFICATION_MODE_DESC: Record<NotificationMode, string> = {
   alarm: '高优先级本地通知，声音和震动更明显',
+  countdown: '自动选择最近项目，结束后切换下一个',
   notification: '普通本地通知',
   off: '只显示倒计时，不设置系统提醒',
 }
@@ -307,6 +315,19 @@ const styles = StyleSheet.create({
     borderTopColor: '#e5e7eb',
     gap: 6,
   },
+  continuousCountdown: {
+    marginTop: 8,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#bfdbfe',
+    gap: 4,
+  },
+  continuousCountdownLabel: {
+    color: '#2563eb',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   leftText: {
     fontSize: 22,
     fontWeight: '900',
@@ -434,6 +455,14 @@ export default function App() {
     }
 
     return getDoneTimers(selectedVillage, now)
+  }, [now, selectedVillage])
+
+  const selectedNextTimer = useMemo(() => {
+    if (!selectedVillage || selectedVillage.notificationMode !== 'countdown') {
+      return undefined
+    }
+
+    return getNextActiveTimer(selectedVillage, now)
   }, [now, selectedVillage])
 
   async function persist(nextVillages: VillageRecord[]) {
@@ -649,7 +678,7 @@ export default function App() {
       const seconds = parseReminderLeadMinutes(testSecondsInput) || 5
 
       if (testNotificationMode === 'alarm' && Platform.OS === 'android') {
-        await createSystemCountdownTimer({
+        await createSystemAlarm({
           message: 'Clash Helper 闹钟测试',
           endAt: Date.now() + seconds * 1000,
           skipUi: false,
@@ -760,12 +789,12 @@ export default function App() {
     )
   }
 
-  async function handleCreateSystemTimer(
+  async function handleCreateSystemAlarm(
     village: VillageRecord,
     timer: VillageTimer,
   ) {
     try {
-      const systemTimerId = await createSystemCountdownTimer({
+      const systemAlarmId = await createSystemAlarm({
         message: `${village.name}：${timer.title} 已完成`,
         endAt: timer.endAt,
         skipUi: true,
@@ -778,8 +807,8 @@ export default function App() {
           current.id === timer.id
             ? {
                 ...current,
-                systemTimerId,
-                systemTimerCreatedAt: Date.now(),
+                systemAlarmId,
+                systemAlarmCreatedAt: Date.now(),
               }
             : current,
         ),
@@ -787,10 +816,7 @@ export default function App() {
 
       await persist(nextVillages)
 
-      Alert.alert(
-        '已调用系统计时器',
-        '如果系统时钟没有直接创建，请在弹出的系统页面中确认。',
-      )
+      Alert.alert('已创建系统闹钟', '请在系统时钟中确认闹钟时间和铃声。')
     } catch (error) {
       if (isSetAlarmPermissionError(error)) {
         try {
@@ -807,8 +833,22 @@ export default function App() {
       }
 
       Alert.alert(
-        '创建系统计时器失败',
+        '创建系统闹钟失败',
         error instanceof Error ? error.message : '未知错误',
+      )
+    }
+  }
+
+  async function handleOpenSystemSetting(
+    title: string,
+    action: () => Promise<void>,
+  ) {
+    try {
+      await action()
+    } catch (error) {
+      Alert.alert(
+        `${title}打开失败`,
+        error instanceof Error ? error.message : '无法打开系统设置',
       )
     }
   }
@@ -965,6 +1005,26 @@ export default function App() {
                   }
                 />
 
+                {selectedNextTimer ? (
+                  <View
+                    testID="continuous-countdown"
+                    style={styles.continuousCountdown}
+                  >
+                    <Text style={styles.continuousCountdownLabel}>
+                      连续倒计时 · 当前项目
+                    </Text>
+                    <Text style={styles.timerTitle}>
+                      {selectedNextTimer.title}
+                    </Text>
+                    <Text style={styles.leftText}>
+                      {formatDuration(selectedNextTimer.endAt - now)}
+                    </Text>
+                    <Text style={styles.muted}>
+                      剩余 {selectedActiveTimers.length} 个项目
+                    </Text>
+                  </View>
+                ) : null}
+
                 <Text style={styles.sectionTitle}>进行中的倒计时</Text>
                 {selectedActiveTimers.length === 0 ? (
                   <Text style={styles.muted}>当前没有进行中的升级或冷却。</Text>
@@ -988,10 +1048,10 @@ export default function App() {
                             value,
                           )
                         }
-                        onCreateSystemTimer={
+                        onCreateSystemAlarm={
                           Platform.OS === 'android'
                             ? () =>
-                                handleCreateSystemTimer(selectedVillage, timer)
+                                handleCreateSystemAlarm(selectedVillage, timer)
                             : undefined
                         }
                       />
@@ -1057,6 +1117,53 @@ export default function App() {
               当前默认提前 {defaultReminderLeadMinutes}{' '}
               分钟；新导入村庄会使用这个值。
             </Text>
+
+            {Platform.OS === 'android' ? (
+              <>
+                <Text style={styles.sectionTitle}>后台可靠性</Text>
+                <Text style={styles.muted}>
+                  {Platform.constants.Manufacturer} {Platform.constants.Model}
+                </Text>
+                <View style={styles.actionRow}>
+                  <Pressable
+                    testID="open-auto-start-settings-button"
+                    onPress={() =>
+                      handleOpenSystemSetting(
+                        '自启动设置',
+                        openAutoStartSettings,
+                      )
+                    }
+                    style={styles.outlineButton}
+                  >
+                    <Text style={styles.outlineButtonText}>后台与自启动</Text>
+                  </Pressable>
+                  <Pressable
+                    testID="open-battery-settings-button"
+                    onPress={() =>
+                      handleOpenSystemSetting(
+                        '电池优化设置',
+                        openBatteryOptimizationSettings,
+                      )
+                    }
+                    style={styles.outlineButton}
+                  >
+                    <Text style={styles.outlineButtonText}>电池优化</Text>
+                  </Pressable>
+                  <Pressable
+                    testID="open-notification-settings-button"
+                    onPress={() =>
+                      handleOpenSystemSetting(
+                        '通知设置',
+                        openNotificationSettings,
+                      )
+                    }
+                    style={styles.outlineButton}
+                  >
+                    <Text style={styles.outlineButtonText}>通知权限</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : null}
           </View>
         ) : null}
 
@@ -1132,7 +1239,12 @@ function ModeSelector(props: {
   value: NotificationMode
   onChange: (mode: NotificationMode) => void
 }) {
-  const modes: NotificationMode[] = ['alarm', 'notification', 'off']
+  const modes: NotificationMode[] = [
+    'alarm',
+    'countdown',
+    'notification',
+    'off',
+  ]
 
   return (
     <View style={styles.modeList}>
@@ -1165,7 +1277,7 @@ function TimerCard(props: {
   expanded?: boolean
   onToggleSettings?: () => void
   onChangeReminderLead?: (value: string) => void
-  onCreateSystemTimer?: () => void
+  onCreateSystemAlarm?: () => void
 }) {
   const leftMs = props.timer.endAt - props.now
   const done = leftMs <= 0
@@ -1218,22 +1330,22 @@ function TimerCard(props: {
             />
             <Text style={styles.muted}>分钟</Text>
           </View>
-          {props.timer.systemTimerId ? (
-            <Text style={styles.muted}>已创建系统计时器</Text>
+          {props.timer.systemAlarmId ? (
+            <Text style={styles.muted}>已创建系统闹钟</Text>
           ) : null}
-          {props.onCreateSystemTimer ? (
+          {props.onCreateSystemAlarm ? (
             <Pressable
-              testID={`system-timer-button-${props.timer.id}`}
-              onPress={props.onCreateSystemTimer}
+              testID={`system-alarm-button-${props.timer.id}`}
+              onPress={props.onCreateSystemAlarm}
               style={styles.outlineButton}
             >
-              <Text style={styles.outlineButtonText}>创建系统计时器</Text>
+              <Text style={styles.outlineButtonText}>创建系统闹钟</Text>
             </Pressable>
           ) : null}
         </View>
       ) : null}
-      {!done && !props.expanded && props.timer.systemTimerId ? (
-        <Text style={styles.muted}>已创建系统计时器</Text>
+      {!done && !props.expanded && props.timer.systemAlarmId ? (
+        <Text style={styles.muted}>已创建系统闹钟</Text>
       ) : null}
     </View>
   )
