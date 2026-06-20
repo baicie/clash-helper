@@ -1,11 +1,11 @@
 {
   "name": "clash-helper",
   "type": "module",
-  "version": "0.0.0-beta.3",
+  "version": "0.0.0-beta.4",
   "packageManager": "pnpm@10.34.3",
   "main": "index.ts",
   "scripts": {
-    "start": "expo start",
+    "dev": "expo start",
     "android": "expo run:android",
     "build": "pnpm type-check",
     "ios": "expo run:ios",

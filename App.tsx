@@ -1,4 +1,9 @@
-import type { NotificationMode, VillageRecord, VillageTimer } from './src/types'
+import type {
+  AppSettings,
+  NotificationMode,
+  VillageRecord,
+  VillageTimer,
+} from './src/types'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -9,6 +14,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -31,6 +37,7 @@ import {
   scheduleTestNotification,
   scheduleVillageNotifications,
 } from './src/notifications/notificationService'
+import { isInQuietHours, normalizeHour } from './src/settings/quietHours'
 import {
   clearVillages,
   DEFAULT_APP_SETTINGS,
@@ -57,7 +64,7 @@ import {
 
 LogBox.ignoreLogs(['Cannot connect to Expo CLI'])
 
-type AppView = 'home' | 'settings' | 'test'
+type AppView = 'home' | 'import' | 'settings' | 'test' | 'village'
 
 const NOTIFICATION_MODE_LABEL: Record<NotificationMode, string> = {
   alarm: '闹钟提醒',
@@ -93,6 +100,14 @@ function parseReminderLeadMinutes(value: string) {
   return Math.floor(minutes)
 }
 
+function parseHourInput(value: string, fallback: number) {
+  if (!value.trim()) {
+    return fallback
+  }
+
+  return normalizeHour(Number(value), fallback)
+}
+
 const styles = StyleSheet.create({
   page: {
     flex: 1,
@@ -126,6 +141,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   title: {
+    flex: 1,
     fontSize: 30,
     fontWeight: '800',
     color: '#111827',
@@ -134,6 +150,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: '#6b7280',
+  },
+  headerAction: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerActionText: {
+    color: '#2563eb',
+    fontSize: 30,
+    fontWeight: '500',
   },
   card: {
     padding: 14,
@@ -405,6 +432,15 @@ export default function App() {
   const [leadMinutesInput, setLeadMinutesInput] = useState(
     String(DEFAULT_APP_SETTINGS.defaultReminderLeadMinutes),
   )
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(
+    DEFAULT_APP_SETTINGS.quietHoursEnabled,
+  )
+  const [quietHoursStartInput, setQuietHoursStartInput] = useState(
+    String(DEFAULT_APP_SETTINGS.quietHoursStart),
+  )
+  const [quietHoursEndInput, setQuietHoursEndInput] = useState(
+    String(DEFAULT_APP_SETTINGS.quietHoursEnd),
+  )
   const [testNotificationMode, setTestNotificationMode] =
     useState<NotificationMode>('alarm')
   const [testSecondsInput, setTestSecondsInput] = useState('5')
@@ -424,6 +460,9 @@ export default function App() {
         setDefaultNotificationMode(settings.defaultNotificationMode)
         setDefaultReminderLeadMinutes(settings.defaultReminderLeadMinutes)
         setLeadMinutesInput(String(settings.defaultReminderLeadMinutes))
+        setQuietHoursEnabled(settings.quietHoursEnabled)
+        setQuietHoursStartInput(String(settings.quietHoursStart))
+        setQuietHoursEndInput(String(settings.quietHoursEnd))
         setVillages(storedVillages)
         setSelectedVillageId(storedVillages[0]?.id)
       })
@@ -469,6 +508,28 @@ export default function App() {
   }, [now, selectedVillage])
   const canCreateAllSystemAlarms =
     Platform.OS === 'android' && selectedActiveTimers.length > 0
+  const quietHoursSettings = {
+    enabled: quietHoursEnabled,
+    startHour: parseHourInput(
+      quietHoursStartInput,
+      DEFAULT_APP_SETTINGS.quietHoursStart,
+    ),
+    endHour: parseHourInput(
+      quietHoursEndInput,
+      DEFAULT_APP_SETTINGS.quietHoursEnd,
+    ),
+  }
+
+  function getSettings(overrides: Partial<AppSettings> = {}): AppSettings {
+    return {
+      defaultNotificationMode,
+      defaultReminderLeadMinutes,
+      quietHoursEnabled,
+      quietHoursStart: quietHoursSettings.startHour,
+      quietHoursEnd: quietHoursSettings.endHour,
+      ...overrides,
+    }
+  }
 
   useEffect(() => {
     if (
@@ -584,6 +645,7 @@ export default function App() {
       await persist(nextVillages)
 
       setSelectedVillageId(scheduledVillage.id)
+      setCurrentView('village')
       setImportText('')
 
       Alert.alert(
@@ -658,10 +720,7 @@ export default function App() {
 
   async function handleChangeDefaultNotificationMode(mode: NotificationMode) {
     setDefaultNotificationMode(mode)
-    await saveSettings({
-      defaultNotificationMode: mode,
-      defaultReminderLeadMinutes,
-    })
+    await saveSettings(getSettings({ defaultNotificationMode: mode }))
   }
 
   async function handleApplyDefaultReminderLeadMinutes() {
@@ -669,10 +728,9 @@ export default function App() {
 
     setDefaultReminderLeadMinutes(nextLeadMinutes)
     setLeadMinutesInput(String(nextLeadMinutes))
-    await saveSettings({
-      defaultNotificationMode,
-      defaultReminderLeadMinutes: nextLeadMinutes,
-    })
+    await saveSettings(
+      getSettings({ defaultReminderLeadMinutes: nextLeadMinutes }),
+    )
 
     const updatedVillages = villages.map((village) => ({
       ...village,
@@ -784,32 +842,40 @@ export default function App() {
   }
 
   async function handleDeleteVillage(village: VillageRecord) {
-    Alert.alert('删除村庄', `确定删除 ${village.name} 吗？`, [
-      {
-        text: '取消',
-        style: 'cancel',
-      },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await cancelVillageNotifications(village)
-          } catch {
-            // ignore
-          }
-
-          const nextVillages = removeVillage(villages, village.id)
-
-          await persist(nextVillages)
-          setSelectedVillageId(nextVillages[0]?.id)
+    Alert.alert(
+      '删除村庄',
+      `确定删除 ${village.name} 吗？已创建的系统闹钟需在时钟应用中单独删除。`,
+      [
+        {
+          text: '取消',
+          style: 'cancel',
         },
-      },
-    ])
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await cancelVillageNotifications(village)
+            } catch {
+              // ignore
+            }
+
+            const nextVillages = removeVillage(villages, village.id)
+
+            await persist(nextVillages)
+            setSelectedVillageId(nextVillages[0]?.id)
+            setCurrentView('home')
+          },
+        },
+      ],
+    )
   }
 
   async function handleClearDoneTimers(village: VillageRecord) {
     const activeTimers = getActiveTimers(village, Date.now())
+    const expiredAlarmCount = village.timers.filter(
+      (timer) => timer.endAt <= Date.now() && timer.systemAlarmId,
+    ).length
 
     const nextVillage: VillageRecord = {
       ...village,
@@ -820,12 +886,28 @@ export default function App() {
     const nextVillages = updateVillage(villages, village.id, () => nextVillage)
 
     await persist(nextVillages)
+
+    if (expiredAlarmCount > 0) {
+      Alert.alert(
+        '已清理完成项目',
+        `同时清理了 ${expiredAlarmCount} 条应用闹钟记录。系统时钟中的已停用闹钟需在时钟应用内删除。`,
+        [
+          { text: '完成' },
+          {
+            text: '打开系统时钟',
+            onPress: () => {
+              openSystemAlarmApp().catch(() => undefined)
+            },
+          },
+        ],
+      )
+    }
   }
 
   async function handleClearAll() {
     Alert.alert(
       '清空全部数据',
-      '会删除所有村庄并取消全部本地通知。确定继续？',
+      '会删除所有村庄并取消本地通知。系统时钟中的闹钟仍需手动删除。确定继续？',
       [
         {
           text: '取消',
@@ -849,6 +931,7 @@ export default function App() {
 
             setVillages([])
             setSelectedVillageId(undefined)
+            setCurrentView('home')
           },
         },
       ],
@@ -859,6 +942,11 @@ export default function App() {
     village: VillageRecord,
     timer: VillageTimer,
   ) {
+    if (isInQuietHours(timer.endAt, quietHoursSettings)) {
+      Alert.alert('已跳过休息时段', '该项目完成时间位于休息时段，不创建闹钟')
+      return
+    }
+
     try {
       const systemAlarmId = await createSystemAlarm({
         message: `${village.name}：${timer.title} 已完成`,
@@ -915,9 +1003,22 @@ export default function App() {
       return
     }
 
+    const eligibleTimers = activeTimers.filter(
+      (timer) => !isInQuietHours(timer.endAt, quietHoursSettings),
+    )
+    const quietHoursSkipped = activeTimers.length - eligibleTimers.length
+
+    if (eligibleTimers.length === 0) {
+      Alert.alert(
+        '已跳过休息时段',
+        `有 ${quietHoursSkipped} 个项目位于休息时段，未创建闹钟`,
+      )
+      return
+    }
+
     try {
       const result = await createSystemAlarmBatch(
-        activeTimers.map((timer) => ({
+        eligibleTimers.map((timer) => ({
           id: timer.id,
           message: `${village.name}：${timer.title} 已完成`,
           endAt: timer.endAt,
@@ -943,7 +1044,7 @@ export default function App() {
       await persist(nextVillages)
       Alert.alert(
         '批量创建完成',
-        `已创建 ${result.created.length} 个闹钟，跳过 ${result.failed.length} 个项目`,
+        `已创建 ${result.created.length} 个闹钟，休息时段跳过 ${quietHoursSkipped} 个，其他失败 ${result.failed.length} 个`,
       )
     } catch (error) {
       if (isSetAlarmPermissionError(error)) {
@@ -959,6 +1060,64 @@ export default function App() {
         error instanceof Error ? error.message : '未知错误',
       )
     }
+  }
+
+  async function handleSaveQuietHours() {
+    const quietHoursStart = quietHoursSettings.startHour
+    const quietHoursEnd = quietHoursSettings.endHour
+
+    setQuietHoursStartInput(String(quietHoursStart))
+    setQuietHoursEndInput(String(quietHoursEnd))
+    await saveSettings(getSettings({ quietHoursStart, quietHoursEnd }))
+    Alert.alert(
+      '休息时段已保存',
+      `${quietHoursStart}:00–${quietHoursEnd}:00 不创建系统闹钟`,
+    )
+  }
+
+  async function handleToggleQuietHours(enabled: boolean) {
+    setQuietHoursEnabled(enabled)
+    await saveSettings(getSettings({ quietHoursEnabled: enabled }))
+  }
+
+  async function handleClearExpiredAlarmRecords(village: VillageRecord) {
+    const expiredAlarmCount = village.timers.filter(
+      (timer) => timer.systemAlarmId && timer.endAt <= Date.now(),
+    ).length
+
+    if (expiredAlarmCount === 0) {
+      Alert.alert('无需清理', '当前没有已响过的闹钟记录')
+      return
+    }
+
+    const nextVillages = updateVillage(villages, village.id, (item) => ({
+      ...item,
+      updatedAt: Date.now(),
+      timers: item.timers.map((timer) =>
+        timer.systemAlarmId && timer.endAt <= Date.now()
+          ? {
+              ...timer,
+              systemAlarmId: undefined,
+              systemAlarmCreatedAt: undefined,
+            }
+          : timer,
+      ),
+    }))
+
+    await persist(nextVillages)
+    Alert.alert(
+      '已清理闹钟记录',
+      `已清理 ${expiredAlarmCount} 条应用记录。系统时钟中的已停用闹钟需在时钟应用内删除。`,
+      [
+        { text: '完成' },
+        {
+          text: '打开系统时钟',
+          onPress: () => {
+            openSystemAlarmApp().catch(() => undefined)
+          },
+        },
+      ],
+    )
   }
 
   async function handleOpenSystemSetting(
@@ -983,244 +1142,255 @@ export default function App() {
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <Pressable
-              testID="menu-button"
-              onPress={() => setMenuVisible(true)}
+              testID={currentView === 'home' ? 'menu-button' : 'back-button'}
+              onPress={() =>
+                currentView === 'home'
+                  ? setMenuVisible(true)
+                  : setCurrentView('home')
+              }
               style={styles.menuButton}
             >
-              <Text style={styles.menuButtonText}>☰</Text>
+              <Text style={styles.menuButtonText}>
+                {currentView === 'home' ? '☰' : '‹'}
+              </Text>
             </Pressable>
             <Text style={styles.title}>Clash Helper</Text>
+            {currentView === 'home' ? (
+              <Pressable
+                testID="add-village-button"
+                onPress={() => setCurrentView('import')}
+                style={styles.headerAction}
+              >
+                <Text style={styles.headerActionText}>+</Text>
+              </Pressable>
+            ) : null}
           </View>
-          <Text style={styles.subtitle}>
-            粘贴部落冲突导出的村庄
-            JSON，自动识别升级、研究、助手冷却和钟楼冷却。
-          </Text>
+          {currentView === 'import' ? (
+            <Text style={styles.subtitle}>导入新村庄或更新已有村庄</Text>
+          ) : null}
         </View>
 
         {currentView === 'home' ? (
-          <>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>默认提醒方式</Text>
-              <ModeSelector
-                value={defaultNotificationMode}
-                onChange={handleChangeDefaultNotificationMode}
-              />
-              <Text style={styles.muted}>
-                新导入村庄默认使用此模式；已有村庄会保留自己的提醒模式。
-              </Text>
-            </View>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>我的村庄</Text>
+            {villages.length === 0 ? (
+              <Text style={styles.muted}>还没有导入任何村庄。</Text>
+            ) : (
+              <View style={styles.villageList}>
+                {villages.map((village) => {
+                  const activeCount = getActiveTimers(village, now).length
+                  const doneCount = getDoneTimers(village, now).length
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>导入 / 更新村庄</Text>
-              <TextInput
-                testID="import-textarea"
-                value={importText}
-                onChangeText={setImportText}
-                multiline
-                scrollEnabled
-                placeholder='粘贴游戏导出的 JSON，例如 {"tag":"#R2J0CRJYR",...}'
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={styles.input}
-              />
-              <Pressable
-                testID="import-button"
-                disabled={isImporting}
-                onPress={handleImportVillage}
+                  return (
+                    <Pressable
+                      key={village.id}
+                      testID={`village-item-${village.id}`}
+                      onPress={() => {
+                        setSelectedVillageId(village.id)
+                        setCurrentView('village')
+                      }}
+                      style={styles.villageItem}
+                    >
+                      <Text style={styles.villageName}>{village.name}</Text>
+                      <Text style={styles.muted}>
+                        {village.tag} · 进行中 {activeCount} · 已完成{' '}
+                        {doneCount} ·{' '}
+                        {NOTIFICATION_MODE_LABEL[village.notificationMode]}
+                      </Text>
+                      <Text style={styles.muted}>
+                        最近导入：{formatDateTime(village.importedAt)}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            )}
+          </View>
+        ) : null}
+
+        {currentView === 'import' ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>导入 / 更新村庄</Text>
+            <TextInput
+              testID="import-textarea"
+              value={importText}
+              onChangeText={setImportText}
+              multiline
+              scrollEnabled
+              placeholder='粘贴游戏导出的 JSON，例如 {"tag":"#R2J0CRJYR",...}'
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.input}
+            />
+            <Pressable
+              testID="import-button"
+              disabled={isImporting}
+              onPress={handleImportVillage}
+              style={[
+                styles.importButton,
+                isImporting && styles.importButtonDisabled,
+              ]}
+            >
+              <Text
                 style={[
-                  styles.importButton,
-                  isImporting && styles.importButtonDisabled,
+                  styles.importButtonText,
+                  isImporting && styles.importButtonTextDisabled,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.importButtonText,
-                    isImporting && styles.importButtonTextDisabled,
-                  ]}
-                >
-                  {isImporting ? '正在解析...' : '解析并保存'}
-                </Text>
-              </Pressable>
-            </View>
+                {isImporting ? '正在解析...' : '解析并保存'}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
 
+        {currentView === 'village' ? (
+          selectedVillage ? (
             <View style={styles.card}>
               <View style={styles.rowBetween}>
-                <Text style={styles.cardTitle}>我的村庄</Text>
-                {villages.length > 0 ? (
+                <View style={styles.flex1}>
+                  <Text style={styles.cardTitle}>{selectedVillage.name}</Text>
+                  <Text style={styles.muted}>{selectedVillage.tag}</Text>
+                </View>
+
+                <View style={styles.actionRow}>
                   <Pressable
-                    testID="clear-all-button"
-                    onPress={handleClearAll}
+                    testID="rename-village-button"
+                    onPress={() => handleOpenRenameVillage(selectedVillage)}
                     style={styles.textButton}
                   >
-                    <Text style={styles.dangerText}>清空</Text>
+                    <Text style={styles.primaryText}>改名</Text>
+                  </Pressable>
+
+                  <Pressable
+                    testID="delete-village-button"
+                    onPress={() => handleDeleteVillage(selectedVillage)}
+                    style={styles.textButton}
+                  >
+                    <Text style={styles.dangerText}>删除</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <Text style={styles.sectionTitle}>提醒方式</Text>
+              <ModeSelector
+                value={selectedVillage.notificationMode}
+                onChange={(mode) =>
+                  handleChangeVillageMode(selectedVillage, mode)
+                }
+              />
+
+              {Platform.OS === 'android' ? (
+                <View style={styles.actionRow}>
+                  {canCreateAllSystemAlarms ? (
+                    <Pressable
+                      testID="create-all-system-alarms-button"
+                      onPress={() =>
+                        handleCreateAllSystemAlarms(selectedVillage)
+                      }
+                      style={styles.outlineButton}
+                    >
+                      <Text style={styles.outlineButtonText}>批量创建闹钟</Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    testID="clear-expired-alarms-button"
+                    onPress={() =>
+                      handleClearExpiredAlarmRecords(selectedVillage)
+                    }
+                    style={styles.outlineButton}
+                  >
+                    <Text style={styles.outlineButtonText}>清理已响闹钟</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {selectedNextTimer ? (
+                <View
+                  testID="continuous-countdown"
+                  style={styles.continuousCountdown}
+                >
+                  <Text style={styles.continuousCountdownLabel}>
+                    连续倒计时 · 当前项目
+                  </Text>
+                  <Text style={styles.timerTitle}>
+                    {selectedNextTimer.title}
+                  </Text>
+                  <Text style={styles.leftText}>
+                    {formatDuration(selectedNextTimer.endAt - now)}
+                  </Text>
+                  <Text style={styles.muted}>
+                    剩余 {selectedActiveTimers.length} 个项目
+                  </Text>
+                  <Text style={styles.muted}>
+                    {selectedNextTimer.systemTimerId
+                      ? '系统倒计时已启动'
+                      : '正在启动系统倒计时'}
+                  </Text>
+                </View>
+              ) : null}
+
+              <Text style={styles.sectionTitle}>进行中的倒计时</Text>
+              {selectedActiveTimers.length === 0 ? (
+                <Text style={styles.muted}>当前没有进行中的升级或冷却。</Text>
+              ) : (
+                <View style={styles.timerList}>
+                  {selectedActiveTimers.map((timer) => (
+                    <TimerCard
+                      key={timer.id}
+                      timer={timer}
+                      now={now}
+                      expanded={expandedTimerId === timer.id}
+                      onToggleSettings={() =>
+                        setExpandedTimerId((current) =>
+                          current === timer.id ? undefined : timer.id,
+                        )
+                      }
+                      onChangeReminderLead={(value) =>
+                        handleChangeTimerReminderLead(
+                          selectedVillage,
+                          timer,
+                          value,
+                        )
+                      }
+                      onCreateSystemAlarm={
+                        Platform.OS === 'android'
+                          ? () =>
+                              handleCreateSystemAlarm(selectedVillage, timer)
+                          : undefined
+                      }
+                    />
+                  ))}
+                </View>
+              )}
+
+              <View style={styles.rowBetween}>
+                <Text style={styles.sectionTitle}>已完成</Text>
+                {selectedDoneTimers.length > 0 ? (
+                  <Pressable
+                    testID="clear-done-button"
+                    onPress={() => handleClearDoneTimers(selectedVillage)}
+                    style={styles.textButton}
+                  >
+                    <Text style={styles.primaryText}>清理已完成</Text>
                   </Pressable>
                 ) : null}
               </View>
 
-              {villages.length === 0 ? (
-                <Text style={styles.muted}>还没有导入任何村庄。</Text>
+              {selectedDoneTimers.length === 0 ? (
+                <Text style={styles.muted}>暂无已完成任务。</Text>
               ) : (
-                <View style={styles.villageList}>
-                  {villages.map((village) => {
-                    const activeCount = getActiveTimers(village, now).length
-                    const doneCount = getDoneTimers(village, now).length
-                    const active = village.id === selectedVillageId
-
-                    return (
-                      <Pressable
-                        key={village.id}
-                        testID={`village-item-${village.id}`}
-                        onPress={() => setSelectedVillageId(village.id)}
-                        style={[
-                          styles.villageItem,
-                          active && styles.villageItemActive,
-                        ]}
-                      >
-                        <Text style={styles.villageName}>{village.name}</Text>
-                        <Text style={styles.muted}>
-                          {village.tag} · 进行中 {activeCount} · 已完成{' '}
-                          {doneCount} ·{' '}
-                          {NOTIFICATION_MODE_LABEL[village.notificationMode]}
-                        </Text>
-                        <Text style={styles.muted}>
-                          最近导入：{formatDateTime(village.importedAt)}
-                        </Text>
-                      </Pressable>
-                    )
-                  })}
+                <View style={styles.timerList}>
+                  {selectedDoneTimers.map((timer) => (
+                    <TimerCard key={timer.id} timer={timer} now={now} />
+                  ))}
                 </View>
               )}
             </View>
-
-            {selectedVillage ? (
-              <View style={styles.card}>
-                <View style={styles.rowBetween}>
-                  <View style={styles.flex1}>
-                    <Text style={styles.cardTitle}>{selectedVillage.name}</Text>
-                    <Text style={styles.muted}>{selectedVillage.tag}</Text>
-                  </View>
-
-                  <View style={styles.actionRow}>
-                    <Pressable
-                      testID="rename-village-button"
-                      onPress={() => handleOpenRenameVillage(selectedVillage)}
-                      style={styles.textButton}
-                    >
-                      <Text style={styles.primaryText}>改名</Text>
-                    </Pressable>
-
-                    <Pressable
-                      testID="delete-village-button"
-                      onPress={() => handleDeleteVillage(selectedVillage)}
-                      style={styles.textButton}
-                    >
-                      <Text style={styles.dangerText}>删除</Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                <Text style={styles.sectionTitle}>提醒方式</Text>
-                <ModeSelector
-                  value={selectedVillage.notificationMode}
-                  onChange={(mode) =>
-                    handleChangeVillageMode(selectedVillage, mode)
-                  }
-                />
-
-                {canCreateAllSystemAlarms ? (
-                  <Pressable
-                    testID="create-all-system-alarms-button"
-                    onPress={() => handleCreateAllSystemAlarms(selectedVillage)}
-                    style={styles.outlineButton}
-                  >
-                    <Text style={styles.outlineButtonText}>批量创建闹钟</Text>
-                  </Pressable>
-                ) : null}
-
-                {selectedNextTimer ? (
-                  <View
-                    testID="continuous-countdown"
-                    style={styles.continuousCountdown}
-                  >
-                    <Text style={styles.continuousCountdownLabel}>
-                      连续倒计时 · 当前项目
-                    </Text>
-                    <Text style={styles.timerTitle}>
-                      {selectedNextTimer.title}
-                    </Text>
-                    <Text style={styles.leftText}>
-                      {formatDuration(selectedNextTimer.endAt - now)}
-                    </Text>
-                    <Text style={styles.muted}>
-                      剩余 {selectedActiveTimers.length} 个项目
-                    </Text>
-                    <Text style={styles.muted}>
-                      {selectedNextTimer.systemTimerId
-                        ? '系统倒计时已启动'
-                        : '正在启动系统倒计时'}
-                    </Text>
-                  </View>
-                ) : null}
-
-                <Text style={styles.sectionTitle}>进行中的倒计时</Text>
-                {selectedActiveTimers.length === 0 ? (
-                  <Text style={styles.muted}>当前没有进行中的升级或冷却。</Text>
-                ) : (
-                  <View style={styles.timerList}>
-                    {selectedActiveTimers.map((timer) => (
-                      <TimerCard
-                        key={timer.id}
-                        timer={timer}
-                        now={now}
-                        expanded={expandedTimerId === timer.id}
-                        onToggleSettings={() =>
-                          setExpandedTimerId((current) =>
-                            current === timer.id ? undefined : timer.id,
-                          )
-                        }
-                        onChangeReminderLead={(value) =>
-                          handleChangeTimerReminderLead(
-                            selectedVillage,
-                            timer,
-                            value,
-                          )
-                        }
-                        onCreateSystemAlarm={
-                          Platform.OS === 'android'
-                            ? () =>
-                                handleCreateSystemAlarm(selectedVillage, timer)
-                            : undefined
-                        }
-                      />
-                    ))}
-                  </View>
-                )}
-
-                <View style={styles.rowBetween}>
-                  <Text style={styles.sectionTitle}>已完成</Text>
-                  {selectedDoneTimers.length > 0 ? (
-                    <Pressable
-                      testID="clear-done-button"
-                      onPress={() => handleClearDoneTimers(selectedVillage)}
-                      style={styles.textButton}
-                    >
-                      <Text style={styles.primaryText}>清理已完成</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-
-                {selectedDoneTimers.length === 0 ? (
-                  <Text style={styles.muted}>暂无已完成任务。</Text>
-                ) : (
-                  <View style={styles.timerList}>
-                    {selectedDoneTimers.map((timer) => (
-                      <TimerCard key={timer.id} timer={timer} now={now} />
-                    ))}
-                  </View>
-                )}
-              </View>
-            ) : null}
-          </>
+          ) : (
+            <View style={styles.card}>
+              <Text style={styles.muted}>村庄不存在或已被删除。</Text>
+            </View>
+          )
         ) : null}
 
         {currentView === 'settings' ? (
@@ -1231,6 +1401,7 @@ export default function App() {
               value={defaultNotificationMode}
               onChange={handleChangeDefaultNotificationMode}
             />
+            <Text style={styles.muted}>新导入村庄默认使用此提醒方式。</Text>
 
             <Text style={styles.sectionTitle}>统一提前提醒</Text>
             <View style={styles.inputRow}>
@@ -1254,6 +1425,45 @@ export default function App() {
               当前默认提前 {defaultReminderLeadMinutes}{' '}
               分钟；新导入村庄会使用这个值。
             </Text>
+
+            <View style={styles.rowBetween}>
+              <View style={styles.flex1}>
+                <Text style={styles.sectionTitle}>智能跳过休息时段</Text>
+                <Text style={styles.muted}>休息时段内不创建系统闹钟</Text>
+              </View>
+              <Switch
+                testID="quiet-hours-switch"
+                value={quietHoursEnabled}
+                onValueChange={handleToggleQuietHours}
+              />
+            </View>
+            <View style={styles.inputRow}>
+              <TextInput
+                testID="quiet-hours-start-input"
+                value={quietHoursStartInput}
+                onChangeText={setQuietHoursStartInput}
+                keyboardType="number-pad"
+                maxLength={2}
+                style={styles.compactInput}
+              />
+              <Text style={styles.muted}>:00 至</Text>
+              <TextInput
+                testID="quiet-hours-end-input"
+                value={quietHoursEndInput}
+                onChangeText={setQuietHoursEndInput}
+                keyboardType="number-pad"
+                maxLength={2}
+                style={styles.compactInput}
+              />
+              <Text style={styles.muted}>:00</Text>
+              <Pressable
+                testID="save-quiet-hours-button"
+                onPress={handleSaveQuietHours}
+                style={styles.outlineButton}
+              >
+                <Text style={styles.outlineButtonText}>保存时段</Text>
+              </Pressable>
+            </View>
 
             {Platform.OS === 'android' ? (
               <>
@@ -1301,6 +1511,15 @@ export default function App() {
                 </View>
               </>
             ) : null}
+
+            <Text style={styles.sectionTitle}>数据</Text>
+            <Pressable
+              testID="clear-all-button"
+              onPress={handleClearAll}
+              style={styles.outlineButton}
+            >
+              <Text style={styles.dangerText}>清空全部村庄</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -1348,7 +1567,7 @@ export default function App() {
         }}
         onSelectVillage={(villageId) => {
           setSelectedVillageId(villageId)
-          setCurrentView('home')
+          setCurrentView('village')
           setMenuVisible(false)
         }}
       />

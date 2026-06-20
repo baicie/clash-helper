@@ -3,6 +3,9 @@ export type NotificationMode = 'alarm' | 'countdown' | 'notification' | 'off'
 export interface AppSettings {
   defaultNotificationMode: NotificationMode
   defaultReminderLeadMinutes: number
+  quietHoursEnabled: boolean
+  quietHoursStart: number
+  quietHoursEnd: number
 }
 
 export type VillageScope = 'home' | 'builder' | 'system'

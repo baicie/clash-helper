@@ -1,12 +1,17 @@
 import type { AppSettings, VillageRecord } from '../types'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
+import { normalizeHour } from '../settings/quietHours'
+
 const VILLAGES_STORAGE_KEY = 'clash-helper:villages:v1'
 const SETTINGS_STORAGE_KEY = 'clash-helper:settings:v1'
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   defaultNotificationMode: 'alarm',
   defaultReminderLeadMinutes: 0,
+  quietHoursEnabled: true,
+  quietHoursStart: 22,
+  quietHoursEnd: 10,
 }
 
 function isVillageList(value: unknown): value is VillageRecord[] {
@@ -38,6 +43,18 @@ function normalizeSettings(value: unknown): AppSettings {
         : DEFAULT_APP_SETTINGS.defaultNotificationMode,
     defaultReminderLeadMinutes: normalizeReminderLeadMinutes(
       settings.defaultReminderLeadMinutes,
+    ),
+    quietHoursEnabled:
+      typeof settings.quietHoursEnabled === 'boolean'
+        ? settings.quietHoursEnabled
+        : DEFAULT_APP_SETTINGS.quietHoursEnabled,
+    quietHoursStart: normalizeHour(
+      settings.quietHoursStart,
+      DEFAULT_APP_SETTINGS.quietHoursStart,
+    ),
+    quietHoursEnd: normalizeHour(
+      settings.quietHoursEnd,
+      DEFAULT_APP_SETTINGS.quietHoursEnd,
     ),
   }
 }

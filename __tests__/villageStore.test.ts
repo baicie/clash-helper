@@ -39,11 +39,33 @@ describe('villageStore', () => {
     await saveSettings({
       defaultNotificationMode: 'countdown',
       defaultReminderLeadMinutes: 0,
+      quietHoursEnabled: true,
+      quietHoursStart: 22,
+      quietHoursEnd: 10,
     })
 
     await expect(loadSettings()).resolves.toEqual({
       defaultNotificationMode: 'countdown',
       defaultReminderLeadMinutes: 0,
+      quietHoursEnabled: true,
+      quietHoursStart: 22,
+      quietHoursEnd: 10,
+    })
+  })
+
+  it('migrates old settings to the default quiet period', async () => {
+    await AsyncStorage.setItem(
+      'clash-helper:settings:v1',
+      JSON.stringify({
+        defaultNotificationMode: 'alarm',
+        defaultReminderLeadMinutes: 5,
+      }),
+    )
+
+    await expect(loadSettings()).resolves.toMatchObject({
+      quietHoursEnabled: true,
+      quietHoursStart: 22,
+      quietHoursEnd: 10,
     })
   })
 
