@@ -5,6 +5,7 @@ import * as IntentLauncher from 'expo-intent-launcher'
 import { Alert, Platform } from 'react-native'
 
 import App from '../App'
+import { createVillageFromExport } from '../src/clash/parseClashExport'
 import { saveSettings, saveVillages } from '../src/storage/villageStore'
 
 const originalPlatformOS = Platform.OS
@@ -135,6 +136,61 @@ describe('app smoke tests', () => {
     expect(Alert.alert).toHaveBeenCalledWith(
       '导入失败',
       expect.stringContaining('JSON'),
+    )
+  })
+
+  it('reconciles system alarms when updating an existing village', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+    jest.spyOn(Date, 'now').mockReturnValue(100_000)
+    const oldExport = {
+      tag: '#UPDATE',
+      timestamp: 100,
+      buildings: [{ data: 1000001, lvl: 1, timer: 60 }],
+    }
+    const existing = createVillageFromExport(oldExport, {
+      importedAt: 100_000,
+    })
+    existing.systemAlarmSyncEnabled = true
+    existing.timers[0].systemAlarmId = 'old-alarm'
+    await saveVillages([existing])
+    await saveSettings({
+      defaultNotificationMode: 'alarm',
+      defaultReminderLeadMinutes: 0,
+      quietHoursEnabled: false,
+      quietHoursStart: 22,
+      quietHoursEnd: 10,
+    })
+
+    const screen = await render(<App />)
+    await fireEvent.press(screen.getByTestId('add-village-button'))
+    await fireEvent.changeText(
+      screen.getByTestId('import-textarea'),
+      JSON.stringify({
+        tag: '#UPDATE',
+        timestamp: 200,
+        buildings: [{ data: 1000002, lvl: 1, timer: 60 }],
+      }),
+    )
+    await fireEvent.press(screen.getByTestId('import-button'))
+
+    await waitFor(() =>
+      expect(IntentLauncher.startActivityAsync).toHaveBeenNthCalledWith(
+        1,
+        'android.intent.action.DISMISS_ALARM',
+        expect.any(Object),
+      ),
+    )
+    expect(IntentLauncher.startActivityAsync).toHaveBeenNthCalledWith(
+      2,
+      'android.intent.action.SET_ALARM',
+      expect.any(Object),
+    )
+    expect(Alert.alert).toHaveBeenCalledWith(
+      '更新成功',
+      expect.stringContaining('移除旧闹钟 1 个，新增闹钟 1 个'),
     )
   })
 

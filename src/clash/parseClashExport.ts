@@ -133,6 +133,9 @@ function applyReminderLeadMinutes(
     defaultReminderLeadMinutes: number
   },
 ) {
+  const existingTimersById = new Map(
+    params.existing?.timers.map((timer) => [timer.id, timer]) ?? [],
+  )
   const existingTimerLeadMinutes = new Map(
     params.existing?.timers.map((timer) => [
       buildTimerReminderKey(timer),
@@ -141,6 +144,7 @@ function applyReminderLeadMinutes(
   )
 
   return timers.map((timer) => {
+    const existingTimer = existingTimersById.get(timer.id)
     const existingLeadMinutes = existingTimerLeadMinutes.get(
       buildTimerReminderKey(timer),
     )
@@ -149,6 +153,10 @@ function applyReminderLeadMinutes(
       ...timer,
       reminderLeadMinutes:
         existingLeadMinutes ?? params.defaultReminderLeadMinutes,
+      systemAlarmId: existingTimer?.systemAlarmId,
+      systemAlarmCreatedAt: existingTimer?.systemAlarmCreatedAt,
+      systemTimerId: existingTimer?.systemTimerId,
+      systemTimerStartedAt: existingTimer?.systemTimerStartedAt,
     }
   })
 }
@@ -304,6 +312,9 @@ export function createVillageFromExport(
     notificationMode:
       existing?.notificationMode ?? options?.notificationMode ?? 'alarm',
     defaultReminderLeadMinutes,
+    systemAlarmSyncEnabled:
+      existing?.systemAlarmSyncEnabled ??
+      existing?.timers.some((timer) => Boolean(timer.systemAlarmId)),
     timers,
   }
 }

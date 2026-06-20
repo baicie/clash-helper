@@ -49,6 +49,7 @@ import {
   updateVillage,
   upsertVillage,
 } from './src/storage/villageStore'
+import { buildSystemAlarmUpdatePlan } from './src/system/alarmReconciliation'
 import {
   openAutoStartSettings,
   openBatteryOptimizationSettings,
@@ -58,6 +59,7 @@ import {
   createSystemAlarm,
   createSystemAlarmBatch,
   createSystemCountdownTimer,
+  dismissSystemAlarm,
   isSetAlarmPermissionError,
   openSystemAlarmApp,
 } from './src/system/systemAlarmService'
@@ -83,6 +85,11 @@ const NOTIFICATION_MODE_DESC: Record<NotificationMode, string> = {
 interface RenameState {
   villageId: string
   value: string
+}
+
+interface CreatedAlarmRecord {
+  id: string
+  systemAlarmId: string
 }
 
 interface MenuViewItem {
@@ -597,6 +604,91 @@ export default function App() {
     await saveVillages(nextVillages)
   }
 
+  async function reconcileSystemAlarms(
+    existing: VillageRecord,
+    updated: VillageRecord,
+  ) {
+    if (Platform.OS !== 'android') {
+      return {
+        village: updated,
+        created: 0,
+        createFailed: 0,
+        dismissed: 0,
+        dismissFailed: 0,
+        quietHoursSkipped: 0,
+      }
+    }
+
+    const plan = buildSystemAlarmUpdatePlan({
+      existing,
+      updated,
+      quietHours: quietHoursSettings,
+    })
+    let dismissed = 0
+    let dismissFailed = 0
+    const dismissedTimerIds = new Set<string>()
+
+    for (const timer of plan.alarmsToDismiss) {
+      try {
+        await dismissSystemAlarm(timer.endAt)
+        dismissed += 1
+        dismissedTimerIds.add(timer.id)
+      } catch {
+        dismissFailed += 1
+      }
+    }
+
+    let created: CreatedAlarmRecord[] = []
+    let createFailed = 0
+
+    if (plan.alarmsToCreate.length > 0) {
+      try {
+        const result = await createSystemAlarmBatch(
+          plan.alarmsToCreate.map((timer) => ({
+            id: timer.id,
+            message: `${updated.name}：${timer.title} 已完成`,
+            endAt: timer.endAt,
+            skipUi: true,
+          })),
+        )
+        created = result.created
+        createFailed = result.failed.length
+      } catch {
+        createFailed = plan.alarmsToCreate.length
+      }
+    }
+
+    const createdByTimerId = new Map(
+      created.map((item) => [item.id, item.systemAlarmId]),
+    )
+    const createdAt = Date.now()
+
+    return {
+      village: {
+        ...updated,
+        timers: updated.timers.map((timer) => {
+          const systemAlarmId = createdByTimerId.get(timer.id)
+          const baseTimer = dismissedTimerIds.has(timer.id)
+            ? {
+                ...timer,
+                systemAlarmId: undefined,
+                systemAlarmCreatedAt: undefined,
+              }
+            : timer
+
+          return systemAlarmId
+            ? { ...baseTimer, systemAlarmId, systemAlarmCreatedAt: createdAt }
+            : baseTimer
+        }),
+      },
+      created: created.length,
+      createFailed,
+      dismissed,
+      dismissFailed,
+      quietHoursSkipped: plan.quietHoursSkipped,
+    }
+  }
+
   async function handleImportVillage() {
     if (isImporting) {
       return
@@ -632,10 +724,25 @@ export default function App() {
         defaultReminderLeadMinutes,
       })
 
-      let scheduledVillage = village
+      let alarmUpdate = {
+        village,
+        created: 0,
+        createFailed: 0,
+        dismissed: 0,
+        dismissFailed: 0,
+        quietHoursSkipped: 0,
+      }
+
+      if (existing) {
+        alarmUpdate = await reconcileSystemAlarms(existing, village)
+      }
+
+      let scheduledVillage = alarmUpdate.village
 
       try {
-        scheduledVillage = await scheduleVillageNotifications(village)
+        scheduledVillage = await scheduleVillageNotifications(
+          alarmUpdate.village,
+        )
       } catch {
         // 通知失败不影响导入
       }
@@ -649,8 +756,10 @@ export default function App() {
       setImportText('')
 
       Alert.alert(
-        '导入成功',
-        `${scheduledVillage.name} 已识别 ${scheduledVillage.timers.length} 个倒计时`,
+        existing ? '更新成功' : '导入成功',
+        existing
+          ? `${scheduledVillage.name} 已更新：移除旧闹钟 ${alarmUpdate.dismissed} 个，新增闹钟 ${alarmUpdate.created} 个，休息时段跳过 ${alarmUpdate.quietHoursSkipped} 个，需手动处理 ${alarmUpdate.dismissFailed + alarmUpdate.createFailed} 个`
+          : `${scheduledVillage.name} 已识别 ${scheduledVillage.timers.length} 个倒计时`,
       )
     } catch (error) {
       Alert.alert(
@@ -1009,6 +1118,11 @@ export default function App() {
     const quietHoursSkipped = activeTimers.length - eligibleTimers.length
 
     if (eligibleTimers.length === 0) {
+      const nextVillages = updateVillage(villages, village.id, (item) => ({
+        ...item,
+        systemAlarmSyncEnabled: true,
+      }))
+      await persist(nextVillages)
       Alert.alert(
         '已跳过休息时段',
         `有 ${quietHoursSkipped} 个项目位于休息时段，未创建闹钟`,
@@ -1032,6 +1146,7 @@ export default function App() {
       const nextVillages = updateVillage(villages, village.id, (item) => ({
         ...item,
         updatedAt: createdAt,
+        systemAlarmSyncEnabled: true,
         timers: item.timers.map((timer) => {
           const systemAlarmId = createdByTimerId.get(timer.id)
 
@@ -1278,6 +1393,9 @@ export default function App() {
                   handleChangeVillageMode(selectedVillage, mode)
                 }
               />
+              {selectedVillage.systemAlarmSyncEnabled ? (
+                <Text style={styles.muted}>系统闹钟自动更新已开启</Text>
+              ) : null}
 
               {Platform.OS === 'android' ? (
                 <View style={styles.actionRow}>

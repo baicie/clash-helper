@@ -99,6 +99,24 @@ describe('parseClashExport', () => {
     expect(updated.notificationMode).toBe('off')
   })
 
+  it('preserves system alarm metadata for unchanged timers', () => {
+    const existing = createVillageFromExport(sample, {
+      importedAt: 1781860781000,
+    })
+    existing.systemAlarmSyncEnabled = true
+    existing.timers[0].systemAlarmId = 'alarm-existing'
+    existing.timers[0].systemTimerId = 'timer-existing'
+
+    const updated = createVillageFromExport(sample, {
+      existing,
+      importedAt: 1781860782000,
+    })
+
+    expect(updated.systemAlarmSyncEnabled).toBe(true)
+    expect(updated.timers[0].systemAlarmId).toBe('alarm-existing')
+    expect(updated.timers[0].systemTimerId).toBe('timer-existing')
+  })
+
   it('splits active and done timers', () => {
     const village = createVillageFromExport(sample, {
       importedAt: 1781860781000,

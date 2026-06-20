@@ -3,6 +3,7 @@ import { Platform } from 'react-native'
 
 const ACTION_SET_ALARM = 'android.intent.action.SET_ALARM'
 const ACTION_SET_TIMER = 'android.intent.action.SET_TIMER'
+const ACTION_DISMISS_ALARM = 'android.intent.action.DISMISS_ALARM'
 const ACTION_SHOW_ALARMS = 'android.intent.action.SHOW_ALARMS'
 const ACTION_MAIN = 'android.intent.action.MAIN'
 
@@ -13,7 +14,9 @@ const EXTRA_HOUR = 'android.intent.extra.alarm.HOUR'
 const EXTRA_LENGTH = 'android.intent.extra.alarm.LENGTH'
 const EXTRA_MINUTES = 'android.intent.extra.alarm.MINUTES'
 const EXTRA_MESSAGE = 'android.intent.extra.alarm.MESSAGE'
+const EXTRA_SEARCH_MODE = 'android.intent.extra.alarm.SEARCH_MODE'
 const EXTRA_SKIP_UI = 'android.intent.extra.alarm.SKIP_UI'
+const ALARM_SEARCH_MODE_TIME = 'android.time'
 
 export interface SystemAlarmRequest {
   message: string
@@ -173,6 +176,25 @@ export async function createSystemAlarmBatch(
   }
 
   return { created, failed }
+}
+
+export async function dismissSystemAlarm(
+  endAt: number,
+  platform: string = Platform.OS,
+) {
+  if (!isSystemAlarmSupported(platform)) {
+    throw new Error('系统闹钟移除目前只支持 Android')
+  }
+
+  const target = getSystemAlarmTarget(endAt)
+
+  await IntentLauncher.startActivityAsync(ACTION_DISMISS_ALARM, {
+    extra: {
+      [EXTRA_SEARCH_MODE]: ALARM_SEARCH_MODE_TIME,
+      [EXTRA_HOUR]: target.hour,
+      [EXTRA_MINUTES]: target.minute,
+    },
+  })
 }
 
 export async function openSystemAlarmApp(

@@ -5,6 +5,7 @@ import {
   createSystemAlarm,
   createSystemAlarmBatch,
   createSystemCountdownTimer,
+  dismissSystemAlarm,
   getSystemAlarmTarget,
   isSetAlarmPermissionError,
   isSystemAlarmSupported,
@@ -126,6 +127,23 @@ describe('systemAlarmService', () => {
     ])
     expect(result.failed).toEqual([])
     expect(IntentLauncher.startActivityAsync).toHaveBeenCalledTimes(2)
+  })
+
+  it('dismisses an existing system alarm by time', async () => {
+    const endAt = new Date(2026, 0, 2, 7, 30).getTime()
+
+    await dismissSystemAlarm(endAt, 'android')
+
+    expect(IntentLauncher.startActivityAsync).toHaveBeenCalledWith(
+      'android.intent.action.DISMISS_ALARM',
+      {
+        extra: {
+          'android.intent.extra.alarm.SEARCH_MODE': 'android.time',
+          'android.intent.extra.alarm.HOUR': 7,
+          'android.intent.extra.alarm.MINUTES': 30,
+        },
+      },
+    )
   })
 
   it('throws on unsupported platform', async () => {

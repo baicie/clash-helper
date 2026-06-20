@@ -101,6 +101,7 @@ export interface VillageRecord {
 
   notificationMode: NotificationMode
   defaultReminderLeadMinutes?: number
+  systemAlarmSyncEnabled?: boolean
 
   timers: VillageTimer[]
 }
