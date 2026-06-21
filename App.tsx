@@ -8,6 +8,7 @@ import { StatusBar } from 'expo-status-bar'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
+  AppState,
   LogBox,
   Modal,
   Platform,
@@ -453,9 +454,12 @@ export default function App() {
   const [testSecondsInput, setTestSecondsInput] = useState('5')
   const [now, setNow] = useState(() => Date.now())
   const [isImporting, setIsImporting] = useState(false)
+  const [storageLoaded, setStorageLoaded] = useState(false)
+  const [alarmSyncRevision, setAlarmSyncRevision] = useState(0)
   const [renameState, setRenameState] = useState<RenameState | null>(null)
   const [expandedTimerId, setExpandedTimerId] = useState<string>()
   const startingSystemTimerRef = useRef<string | undefined>(undefined)
+  const alarmSyncRunningRef = useRef(false)
 
   useEffect(() => {
     initNotifications().catch(() => {
@@ -476,6 +480,9 @@ export default function App() {
       .catch(() => {
         Alert.alert('读取失败', '本地村庄数据读取失败')
       })
+      .finally(() => {
+        setStorageLoaded(true)
+      })
 
     const timer = setInterval(() => {
       setNow(Date.now())
@@ -483,6 +490,18 @@ export default function App() {
 
     return () => {
       clearInterval(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        setAlarmSyncRevision((current) => current + 1)
+      }
+    })
+
+    return () => {
+      subscription.remove()
     }
   }, [])
 
@@ -526,6 +545,13 @@ export default function App() {
       DEFAULT_APP_SETTINGS.quietHoursEnd,
     ),
   }
+  const villagesRef = useRef(villages)
+  const quietHoursSettingsRef = useRef(quietHoursSettings)
+  const reconcileSystemAlarmsRef = useRef(reconcileSystemAlarms)
+
+  villagesRef.current = villages
+  quietHoursSettingsRef.current = quietHoursSettings
+  reconcileSystemAlarmsRef.current = reconcileSystemAlarms
 
   function getSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     return {
@@ -537,6 +563,60 @@ export default function App() {
       ...overrides,
     }
   }
+
+  useEffect(() => {
+    if (
+      Platform.OS !== 'android' ||
+      !storageLoaded ||
+      alarmSyncRunningRef.current
+    ) {
+      return
+    }
+
+    alarmSyncRunningRef.current = true
+
+    const sync = async () => {
+      const currentVillages = villagesRef.current
+      let nextVillages = currentVillages
+      let changed = false
+
+      for (const village of currentVillages) {
+        const syncEnabled =
+          village.systemAlarmSyncEnabled ??
+          village.timers.some((timer) => Boolean(timer.systemAlarmId))
+
+        if (!syncEnabled) {
+          continue
+        }
+
+        const result = await reconcileSystemAlarmsRef.current(
+          village,
+          village,
+          quietHoursSettingsRef.current,
+        )
+
+        if (result.created > 0 || result.dismissed > 0) {
+          nextVillages = updateVillage(
+            nextVillages,
+            village.id,
+            () => result.village,
+          )
+          changed = true
+        }
+      }
+
+      if (changed) {
+        setVillages(nextVillages)
+        await saveVillages(nextVillages)
+      }
+    }
+
+    sync()
+      .catch(() => undefined)
+      .finally(() => {
+        alarmSyncRunningRef.current = false
+      })
+  }, [alarmSyncRevision, storageLoaded])
 
   useEffect(() => {
     if (
@@ -607,12 +687,14 @@ export default function App() {
   async function reconcileSystemAlarms(
     existing: VillageRecord,
     updated: VillageRecord,
+    quietHours = quietHoursSettings,
   ) {
     if (Platform.OS !== 'android') {
       return {
         village: updated,
         created: 0,
         createFailed: 0,
+        deferred: 0,
         dismissed: 0,
         dismissFailed: 0,
         quietHoursSkipped: 0,
@@ -622,7 +704,7 @@ export default function App() {
     const plan = buildSystemAlarmUpdatePlan({
       existing,
       updated,
-      quietHours: quietHoursSettings,
+      quietHours,
     })
     let dismissed = 0
     let dismissFailed = 0
@@ -640,6 +722,7 @@ export default function App() {
 
     let created: CreatedAlarmRecord[] = []
     let createFailed = 0
+    let deferred = 0
 
     if (plan.alarmsToCreate.length > 0) {
       try {
@@ -653,6 +736,7 @@ export default function App() {
         )
         created = result.created
         createFailed = result.failed.length
+        deferred = result.deferred.length
       } catch {
         createFailed = plan.alarmsToCreate.length
       }
@@ -683,6 +767,7 @@ export default function App() {
       },
       created: created.length,
       createFailed,
+      deferred,
       dismissed,
       dismissFailed,
       quietHoursSkipped: plan.quietHoursSkipped,
@@ -728,6 +813,7 @@ export default function App() {
         village,
         created: 0,
         createFailed: 0,
+        deferred: 0,
         dismissed: 0,
         dismissFailed: 0,
         quietHoursSkipped: 0,
@@ -758,7 +844,7 @@ export default function App() {
       Alert.alert(
         existing ? '更新成功' : '导入成功',
         existing
-          ? `${scheduledVillage.name} 已更新：移除旧闹钟 ${alarmUpdate.dismissed} 个，新增闹钟 ${alarmUpdate.created} 个，休息时段跳过 ${alarmUpdate.quietHoursSkipped} 个，需手动处理 ${alarmUpdate.dismissFailed + alarmUpdate.createFailed} 个`
+          ? `${scheduledVillage.name} 已更新：移除旧闹钟 ${alarmUpdate.dismissed} 个，新增闹钟 ${alarmUpdate.created} 个，等待进入24小时 ${alarmUpdate.deferred} 个，休息时段跳过 ${alarmUpdate.quietHoursSkipped} 个，需手动处理 ${alarmUpdate.dismissFailed + alarmUpdate.createFailed} 个`
           : `${scheduledVillage.name} 已识别 ${scheduledVillage.timers.length} 个倒计时`,
       )
     } catch (error) {
@@ -1159,7 +1245,7 @@ export default function App() {
       await persist(nextVillages)
       Alert.alert(
         '批量创建完成',
-        `已创建 ${result.created.length} 个闹钟，休息时段跳过 ${quietHoursSkipped} 个，其他失败 ${result.failed.length} 个`,
+        `已创建 ${result.created.length} 个闹钟，等待进入24小时 ${result.deferred.length} 个，休息时段跳过 ${quietHoursSkipped} 个，其他失败 ${result.failed.length} 个`,
       )
     } catch (error) {
       if (isSetAlarmPermissionError(error)) {
@@ -1184,6 +1270,7 @@ export default function App() {
     setQuietHoursStartInput(String(quietHoursStart))
     setQuietHoursEndInput(String(quietHoursEnd))
     await saveSettings(getSettings({ quietHoursStart, quietHoursEnd }))
+    setAlarmSyncRevision((current) => current + 1)
     Alert.alert(
       '休息时段已保存',
       `${quietHoursStart}:00–${quietHoursEnd}:00 不创建系统闹钟`,
@@ -1193,6 +1280,7 @@ export default function App() {
   async function handleToggleQuietHours(enabled: boolean) {
     setQuietHoursEnabled(enabled)
     await saveSettings(getSettings({ quietHoursEnabled: enabled }))
+    setAlarmSyncRevision((current) => current + 1)
   }
 
   async function handleClearExpiredAlarmRecords(village: VillageRecord) {

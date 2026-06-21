@@ -1736,6 +1736,13 @@ Phase 5：
 
 你现在这个需求，**先不要上服务端推送**。一人用、本机提醒、本地导入，Expo 本地通知已经够跑 MVP。
 
+## 系统闹钟的跨天规则
+
+- 24 小时内的项目可以跨过午夜创建为次日系统闹钟。
+- 超过 24 小时的项目会显示为“等待进入24小时”，不再计为创建失败。
+- App 启动、回到前台或保存休息时段后，会自动补建已经进入 24 小时窗口的闹钟。
+- Android 标准闹钟 Intent 只能传入时和分，无法指定两天后的完整日期；长期后台精确定时需要后续原生 AlarmManager 能力。
+
 [1]: https://github.com/baicie/clash-helper 'GitHub - baicie/clash-helper · GitHub'
 [2]: https://docs.expo.dev/versions/latest/sdk/notifications/?utm_source=chatgpt.com 'Notifications - Expo Documentation'
 [3]: https://developer.android.com/about/versions/14/changes/schedule-exact-alarms?utm_source=chatgpt.com 'Schedule exact alarms are denied by default'

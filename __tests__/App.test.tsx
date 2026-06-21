@@ -280,6 +280,44 @@ describe('app smoke tests', () => {
     )
   })
 
+  it('creates deferred system alarms when the app starts inside 24 hours', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+    const now = new Date(2026, 0, 1, 12).getTime()
+    jest.spyOn(Date, 'now').mockReturnValue(now)
+    const village = createVillage('alarm')
+    village.systemAlarmSyncEnabled = true
+    village.timers = [
+      {
+        ...village.timers[0],
+        endAt: now + 23 * 60 * 60 * 1000,
+      },
+    ]
+    await saveVillages([village])
+    await saveSettings({
+      defaultNotificationMode: 'alarm',
+      defaultReminderLeadMinutes: 0,
+      quietHoursEnabled: false,
+      quietHoursStart: 22,
+      quietHoursEnd: 10,
+    })
+
+    await render(<App />)
+
+    await waitFor(() =>
+      expect(IntentLauncher.startActivityAsync).toHaveBeenCalledWith(
+        'android.intent.action.SET_ALARM',
+        expect.objectContaining({
+          extra: expect.objectContaining({
+            'android.intent.extra.alarm.MESSAGE': village.timers[0].title,
+          }),
+        }),
+      ),
+    )
+  })
+
   it('skips batch alarms during the default quiet period', async () => {
     Object.defineProperty(Platform, 'OS', {
       configurable: true,

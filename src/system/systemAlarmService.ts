@@ -43,6 +43,11 @@ export interface FailedSystemAlarm {
   message: string
 }
 
+export interface DeferredSystemAlarm {
+  id: string
+  endAt: number
+}
+
 export function getSystemAlarmTarget(endAt: number) {
   const targetAt = Math.ceil(endAt / 60_000) * 60_000
   const target = new Date(targetAt)
@@ -158,8 +163,15 @@ export async function createSystemAlarmBatch(
 ) {
   const created: CreatedSystemAlarm[] = []
   const failed: FailedSystemAlarm[] = []
+  const deferred: DeferredSystemAlarm[] = []
+  const now = options?.now ?? Date.now()
 
   for (const item of items) {
+    if (item.endAt - now > MAX_SYSTEM_ALARM_DELAY_MS) {
+      deferred.push({ id: item.id, endAt: item.endAt })
+      continue
+    }
+
     try {
       const systemAlarmId = await createSystemAlarm(item, options)
       created.push({ id: item.id, systemAlarmId })
@@ -175,7 +187,7 @@ export async function createSystemAlarmBatch(
     }
   }
 
-  return { created, failed }
+  return { created, deferred, failed }
 }
 
 export async function dismissSystemAlarm(

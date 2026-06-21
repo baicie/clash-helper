@@ -126,7 +126,35 @@ describe('systemAlarmService', () => {
       { id: 'two', systemAlarmId: 'system-alarm:180000' },
     ])
     expect(result.failed).toEqual([])
+    expect(result.deferred).toEqual([])
     expect(IntentLauncher.startActivityAsync).toHaveBeenCalledTimes(2)
+  })
+
+  it('defers alarms beyond 24 hours instead of reporting failures', async () => {
+    const now = 1_000
+    const result = await createSystemAlarmBatch(
+      [
+        { id: 'soon', message: '最近项目', endAt: now + 60_000 },
+        {
+          id: 'later-1',
+          message: '较远项目一',
+          endAt: now + 25 * 60 * 60 * 1000,
+        },
+        {
+          id: 'later-2',
+          message: '较远项目二',
+          endAt: now + 48 * 60 * 60 * 1000,
+        },
+      ],
+      { now, platform: 'android' },
+    )
+
+    expect(result.created).toHaveLength(1)
+    expect(result.deferred.map((item) => item.id)).toEqual([
+      'later-1',
+      'later-2',
+    ])
+    expect(result.failed).toEqual([])
   })
 
   it('dismisses an existing system alarm by time', async () => {

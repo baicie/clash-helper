@@ -27,7 +27,9 @@ export function buildSystemAlarmUpdatePlan(params: {
     const updatedTimer = updatedTimersById.get(timer.id)
 
     return (
-      !updatedTimer || isInQuietHours(updatedTimer.endAt, params.quietHours)
+      !updatedTimer ||
+      (updatedTimer.endAt > now &&
+        isInQuietHours(updatedTimer.endAt, params.quietHours))
     )
   })
 
