@@ -21,7 +21,6 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-
 import {
   createVillageFromExport,
   getActiveTimers,
@@ -29,6 +28,7 @@ import {
   getNextActiveTimer,
   parseClashVillageExportText,
 } from './src/clash/parseClashExport'
+
 import { formatDateTime, formatDuration } from './src/clash/time'
 import {
   cancelAllNotifications,
@@ -64,6 +64,7 @@ import {
   isSetAlarmPermissionError,
   openSystemAlarmApp,
 } from './src/system/systemAlarmService'
+import { APP_VERSION } from './src/version'
 
 LogBox.ignoreLogs(['Cannot connect to Expo CLI'])
 
@@ -837,8 +838,10 @@ export default function App() {
 
       await persist(nextVillages)
 
-      setSelectedVillageId(scheduledVillage.id)
-      setCurrentView('village')
+      if (!existing) {
+        setSelectedVillageId(scheduledVillage.id)
+        setCurrentView('village')
+      }
       setImportText('')
 
       Alert.alert(
@@ -1726,6 +1729,8 @@ export default function App() {
             >
               <Text style={styles.dangerText}>清空全部村庄</Text>
             </Pressable>
+
+            <Text style={styles.muted}>Clash Helper {APP_VERSION}</Text>
           </View>
         ) : null}
 

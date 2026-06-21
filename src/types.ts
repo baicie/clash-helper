@@ -67,6 +67,13 @@ export interface ClashVillageExport {
 }
 
 export interface VillageTimer {
+  /**
+   * Stable across re-imports: (sourceGroup, dataId, level). Changes only when the
+   * item type or level changes (e.g. upgrade from level 10 → 11). Used by alarm
+   * reconciliation to match timers across village updates.
+   */
+  stableKey: string
+
   id: string
   villageId: string
   sourceGroup: TimerSourceGroup

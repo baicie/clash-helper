@@ -58,6 +58,25 @@ export function normalizeVillageTag(tag: unknown) {
   return text.startsWith('#') ? text : `#${text}`
 }
 
+/**
+ * Stable key used by alarm reconciliation to match the same timer item across
+ * village re-imports. Does NOT include endAt so it stays stable as long as the
+ * item type (dataId) and level haven't changed.
+ */
+function buildTimerStableKey(params: {
+  villageId: string
+  sourceGroup: TimerSourceGroup
+  dataId?: number
+  level?: number
+}) {
+  return [
+    params.villageId,
+    params.sourceGroup,
+    params.dataId ?? 'unknown',
+    params.level ?? 'unknown',
+  ].join(':')
+}
+
 function buildTimerId(params: {
   villageId: string
   sourceGroup: TimerSourceGroup
@@ -80,10 +99,18 @@ function buildItemTitle(config: TimerGroupConfig, item: ClashExportItem) {
   // Use the Chinese name so the title reads cleanly both in the village list
   // and in the Android system clock (which truncates long labels). The raw
   // dataId is still available on `VillageTimer.dataId` for any future need.
-  const nameText = getClashDataName(item.data) ?? `#${item.data}`
+  // For unknown items, show the level instead of the raw numeric ID so the
+  // title stays readable (e.g. "夜世界建筑 · Lv.5" instead of
+  // "夜世界建筑 · #1000036").
+  const nameText = getClashDataName(item.data)
   const levelText = typeof item.lvl === 'number' ? ` Lv.${item.lvl}` : ''
 
-  return `${config.label} · ${nameText}${levelText}`
+  if (nameText) {
+    return `${config.label} · ${nameText}${levelText}`
+  }
+
+  // No known name — show the level if available, otherwise a bare category.
+  return levelText ? `${config.label}${levelText}` : config.label
 }
 
 function createTimer(params: {
@@ -100,6 +127,12 @@ function createTimer(params: {
   const endAt = (params.sourceTimestamp + params.remainingSeconds) * 1000
 
   return {
+    stableKey: buildTimerStableKey({
+      villageId: params.villageId,
+      sourceGroup: params.sourceGroup,
+      dataId: params.dataId,
+      level: params.level,
+    }),
     id: buildTimerId({
       villageId: params.villageId,
       sourceGroup: params.sourceGroup,
@@ -120,15 +153,6 @@ function createTimer(params: {
   }
 }
 
-function buildTimerReminderKey(timer: VillageTimer) {
-  return [
-    timer.sourceGroup,
-    timer.dataId ?? 'unknown',
-    timer.level ?? 'unknown',
-    timer.title,
-  ].join(':')
-}
-
 function applyReminderLeadMinutes(
   timers: VillageTimer[],
   params: {
@@ -136,26 +160,17 @@ function applyReminderLeadMinutes(
     defaultReminderLeadMinutes: number
   },
 ) {
-  const existingTimersById = new Map(
-    params.existing?.timers.map((timer) => [timer.id, timer]) ?? [],
-  )
-  const existingTimerLeadMinutes = new Map(
-    params.existing?.timers.map((timer) => [
-      buildTimerReminderKey(timer),
-      timer.reminderLeadMinutes,
-    ]) ?? [],
+  const existingTimersByStableKey = new Map(
+    params.existing?.timers.map((timer) => [timer.stableKey, timer]) ?? [],
   )
 
   return timers.map((timer) => {
-    const existingTimer = existingTimersById.get(timer.id)
-    const existingLeadMinutes = existingTimerLeadMinutes.get(
-      buildTimerReminderKey(timer),
-    )
+    const existingTimer = existingTimersByStableKey.get(timer.stableKey)
 
     return {
       ...timer,
       reminderLeadMinutes:
-        existingLeadMinutes ?? params.defaultReminderLeadMinutes,
+        existingTimer?.reminderLeadMinutes ?? params.defaultReminderLeadMinutes,
       systemAlarmId: existingTimer?.systemAlarmId,
       systemAlarmCreatedAt: existingTimer?.systemAlarmCreatedAt,
       systemTimerId: existingTimer?.systemTimerId,

@@ -29,6 +29,7 @@ function createVillage(timer: VillageTimer): VillageRecord {
 
 function createTimer(overrides: Partial<VillageTimer> = {}): VillageTimer {
   return {
+    stableKey: 'timer-1:stable',
     id: 'timer-1',
     villageId: '#TEST',
     sourceGroup: 'buildings',

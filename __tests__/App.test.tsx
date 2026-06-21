@@ -23,6 +23,7 @@ function createVillage(notificationMode: NotificationMode): VillageRecord {
     notificationMode,
     timers: [
       {
+        stableKey: 'timer-one:stable',
         id: 'timer-one',
         villageId: '#TEST',
         sourceGroup: 'buildings',
@@ -33,6 +34,7 @@ function createVillage(notificationMode: NotificationMode): VillageRecord {
         endAt: 61_000,
       },
       {
+        stableKey: 'timer-two:stable',
         id: 'timer-two',
         villageId: '#TEST',
         sourceGroup: 'heroes',

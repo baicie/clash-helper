@@ -150,7 +150,7 @@ describe('parseClashExport', () => {
     expect(helper?.title).toBe('助手冷却 · 助手')
   })
 
-  it('falls back to #<id> when the clash data id is unknown', () => {
+  it('falls back to level when the clash data id is unknown', () => {
     const timers = parseTimersFromExport(
       {
         ...sample,
@@ -165,7 +165,9 @@ describe('parseClashExport', () => {
         timer.sourceGroup === 'buildings' && timer.dataId === 999999999,
     )
 
-    expect(unknown?.title).toBe('主世界建筑 · #999999999 Lv.3')
+    // No known name → title uses level instead of raw dataId so the label stays
+    // readable in the system clock app.
+    expect(unknown?.title).toBe('主世界建筑 Lv.3')
   })
 
   it('advances continuous countdown to the next nearest timer', () => {
