@@ -200,7 +200,7 @@ describe('app smoke tests', () => {
     )
   })
 
-  it('reconciles system alarms when updating an existing village', async () => {
+  it('stages alarm changes during JSON update and syncs only on demand', async () => {
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       value: 'android',
@@ -238,6 +238,14 @@ describe('app smoke tests', () => {
     )
     await fireEvent.press(screen.getByTestId('import-button'))
 
+    expect(IntentLauncher.startActivityAsync).not.toHaveBeenCalled()
+    expect(Alert.alert).toHaveBeenCalledWith(
+      '更新成功',
+      expect.stringContaining('待清理旧闹钟 1 个，待创建新闹钟 1 个'),
+    )
+
+    await fireEvent.press(screen.getByTestId('create-all-system-alarms-button'))
+
     await waitFor(() =>
       expect(IntentLauncher.startActivityAsync).toHaveBeenNthCalledWith(
         1,
@@ -249,10 +257,6 @@ describe('app smoke tests', () => {
       2,
       'android.intent.action.SET_ALARM',
       expect.any(Object),
-    )
-    expect(Alert.alert).toHaveBeenCalledWith(
-      '更新成功',
-      expect.stringContaining('移除旧闹钟 1 个，新增闹钟 1 个'),
     )
   })
 
@@ -342,7 +346,7 @@ describe('app smoke tests', () => {
     )
   })
 
-  it('creates deferred system alarms when the app starts inside 24 hours', async () => {
+  it('does not create alarms automatically when the app starts', async () => {
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       value: 'android',
@@ -366,17 +370,12 @@ describe('app smoke tests', () => {
       quietHoursEnd: 10,
     })
 
-    await render(<App />)
+    const screen = await render(<App />)
+    await screen.findByTestId('village-item-#TEST')
 
-    await waitFor(() =>
-      expect(IntentLauncher.startActivityAsync).toHaveBeenCalledWith(
-        'android.intent.action.SET_ALARM',
-        expect.objectContaining({
-          extra: expect.objectContaining({
-            'android.intent.extra.alarm.MESSAGE': village.timers[0].title,
-          }),
-        }),
-      ),
+    expect(IntentLauncher.startActivityAsync).not.toHaveBeenCalledWith(
+      'android.intent.action.SET_ALARM',
+      expect.anything(),
     )
   })
 
@@ -403,8 +402,8 @@ describe('app smoke tests', () => {
       expect.anything(),
     )
     expect(Alert.alert).toHaveBeenCalledWith(
-      '已跳过休息时段',
-      expect.stringContaining('2 个项目'),
+      '系统闹钟同步完成',
+      expect.stringContaining('休息时段跳过 2 个'),
     )
   })
 

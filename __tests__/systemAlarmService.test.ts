@@ -169,7 +169,23 @@ describe('systemAlarmService', () => {
           'android.intent.extra.alarm.SEARCH_MODE': 'android.time',
           'android.intent.extra.alarm.HOUR': 7,
           'android.intent.extra.alarm.MINUTES': 30,
-          'android.intent.extra.alarm.SKIP_UI': true,
+          'android.intent.extra.alarm.IS_PM': false,
+        },
+      },
+    )
+  })
+
+  it('dismisses an existing system alarm by its label when available', async () => {
+    const endAt = new Date(2026, 0, 2, 19, 30).getTime()
+
+    await dismissSystemAlarm(endAt, 'android', '夜世界建筑 · 双管加农炮')
+
+    expect(IntentLauncher.startActivityAsync).toHaveBeenCalledWith(
+      'android.intent.action.DISMISS_ALARM',
+      {
+        extra: {
+          'android.intent.extra.alarm.SEARCH_MODE': 'android.label',
+          'android.intent.extra.alarm.MESSAGE': '夜世界建筑 · 双管加农炮',
         },
       },
     )

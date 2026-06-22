@@ -1,6 +1,9 @@
 import type { VillageRecord, VillageTimer } from '../src/types'
 
-import { buildSystemAlarmUpdatePlan } from '../src/system/alarmReconciliation'
+import {
+  buildSystemAlarmUpdatePlan,
+  stageSystemAlarmUpdate,
+} from '../src/system/alarmReconciliation'
 
 function createTimer(params: {
   id: string
@@ -153,6 +156,58 @@ describe('alarmReconciliation', () => {
 
     expect(plan.alarmsToDismiss).toEqual([existingTimer])
     expect(plan.alarmsToCreate).toEqual([updatedTimer])
+  })
+
+  it('replaces an expired alarm when the same project becomes active again', () => {
+    const existingTimer = {
+      ...createTimer({
+        id: 'expired-upgrade',
+        endAt: new Date(2026, 0, 1, 10).getTime(),
+      }),
+      systemAlarmId: 'alarm-expired',
+    }
+    const updatedTimer = {
+      ...createTimer({
+        id: 'active-upgrade',
+        endAt: new Date(2026, 0, 1, 13).getTime(),
+      }),
+      stableKey: existingTimer.stableKey,
+    }
+    const plan = buildSystemAlarmUpdatePlan({
+      existing: createVillage([existingTimer]),
+      updated: createVillage([updatedTimer]),
+      now: new Date(2026, 0, 1, 11).getTime(),
+      quietHours: { enabled: false, startHour: 22, endHour: 10 },
+    })
+
+    expect(plan.alarmsToDismiss).toEqual([existingTimer])
+    expect(plan.alarmsToCreate).toEqual([updatedTimer])
+  })
+
+  it('persists stale alarms until an explicit system sync', () => {
+    const existingTimer = {
+      ...createTimer({ id: 'old', endAt: 10_000 }),
+      systemAlarmId: 'alarm-old',
+    }
+    const updatedTimer = {
+      ...createTimer({ id: 'new', endAt: 20_000 }),
+      stableKey: existingTimer.stableKey,
+    }
+    const staged = stageSystemAlarmUpdate({
+      existing: createVillage([existingTimer]),
+      updated: createVillage([updatedTimer]),
+      now: 15_000,
+      quietHours: { enabled: false, startHour: 22, endHour: 10 },
+    })
+
+    expect(staged.village.pendingSystemAlarmCleanup).toEqual([
+      {
+        key: '10000:old',
+        title: 'old',
+        endAt: 10_000,
+      },
+    ])
+    expect(staged.plan.alarmsToCreate).toEqual([updatedTimer])
   })
 
   it('replaces an alarm when a legacy numbered title is cleaned up', () => {

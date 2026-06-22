@@ -96,6 +96,12 @@ export interface VillageTimer {
   systemTimerStartedAt?: number
 }
 
+export interface PendingSystemAlarmCleanup {
+  key: string
+  title: string
+  endAt: number
+}
+
 export interface VillageRecord {
   id: string
   tag: string
@@ -109,6 +115,7 @@ export interface VillageRecord {
   notificationMode: NotificationMode
   defaultReminderLeadMinutes?: number
   systemAlarmSyncEnabled?: boolean
+  pendingSystemAlarmCleanup?: PendingSystemAlarmCleanup[]
 
   timers: VillageTimer[]
 }

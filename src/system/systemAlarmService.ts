@@ -11,12 +11,14 @@ const HONOR_CLOCK_PACKAGE = 'com.hihonor.deskclock'
 const MAX_SYSTEM_ALARM_DELAY_MS = 24 * 60 * 60 * 1000
 
 const EXTRA_HOUR = 'android.intent.extra.alarm.HOUR'
+const EXTRA_IS_PM = 'android.intent.extra.alarm.IS_PM'
 const EXTRA_LENGTH = 'android.intent.extra.alarm.LENGTH'
 const EXTRA_MINUTES = 'android.intent.extra.alarm.MINUTES'
 const EXTRA_MESSAGE = 'android.intent.extra.alarm.MESSAGE'
 const EXTRA_SEARCH_MODE = 'android.intent.extra.alarm.SEARCH_MODE'
 const EXTRA_SKIP_UI = 'android.intent.extra.alarm.SKIP_UI'
 const ALARM_SEARCH_MODE_TIME = 'android.time'
+const ALARM_SEARCH_MODE_LABEL = 'android.label'
 
 export interface SystemAlarmRequest {
   message: string
@@ -193,20 +195,27 @@ export async function createSystemAlarmBatch(
 export async function dismissSystemAlarm(
   endAt: number,
   platform: string = Platform.OS,
+  message?: string,
 ) {
   if (!isSystemAlarmSupported(platform)) {
     throw new Error('系统闹钟移除目前只支持 Android')
   }
 
   const target = getSystemAlarmTarget(endAt)
+  const extra = message
+    ? {
+        [EXTRA_SEARCH_MODE]: ALARM_SEARCH_MODE_LABEL,
+        [EXTRA_MESSAGE]: message,
+      }
+    : {
+        [EXTRA_SEARCH_MODE]: ALARM_SEARCH_MODE_TIME,
+        [EXTRA_HOUR]: target.hour,
+        [EXTRA_MINUTES]: target.minute,
+        [EXTRA_IS_PM]: target.hour >= 12,
+      }
 
   await IntentLauncher.startActivityAsync(ACTION_DISMISS_ALARM, {
-    extra: {
-      [EXTRA_SEARCH_MODE]: ALARM_SEARCH_MODE_TIME,
-      [EXTRA_HOUR]: target.hour,
-      [EXTRA_MINUTES]: target.minute,
-      [EXTRA_SKIP_UI]: true,
-    },
+    extra,
   })
 }
 
