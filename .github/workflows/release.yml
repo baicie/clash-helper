@@ -142,6 +142,9 @@ jobs:
           echo "profile=${PROFILE}" >> "$GITHUB_OUTPUT"
           echo "prefix=clash-helper-${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Sync app version
+        run: pnpm release:version "${{ steps.vars.outputs.version }}"
+
       - name: Build Android APK with EAS
         if: ${{ steps.vars.outputs.platform == 'android' }}
         shell: bash

@@ -1,1 +1,3 @@
-export const APP_VERSION = '0.0.0-beta.6'
+import appJson from '../app.json'
+
+export const APP_VERSION = appJson.expo.version

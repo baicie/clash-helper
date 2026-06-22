@@ -170,6 +170,16 @@ describe('parseClashExport', () => {
     expect(unknown?.title).toBe('主世界建筑 Lv.3')
   })
 
+  it('keeps builder-base alarm titles free of numeric identifiers', () => {
+    const timers = parseTimersFromExport(sample, '#R2J0CRJYR', 1781860781000)
+    const builderTimers = timers.filter((timer) => timer.scope === 'builder')
+
+    expect(builderTimers).not.toHaveLength(0)
+    expect(
+      builderTimers.every((timer) => !/#\d+|Lv\.\d+/.test(timer.title)),
+    ).toBe(true)
+  })
+
   it('advances continuous countdown to the next nearest timer', () => {
     const village = createVillageFromExport(sample, {
       importedAt: 1781860781000,

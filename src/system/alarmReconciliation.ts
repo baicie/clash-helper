@@ -28,6 +28,8 @@ export function buildSystemAlarmUpdatePlan(params: {
 
     return (
       !updatedTimer ||
+      updatedTimer.endAt !== timer.endAt ||
+      updatedTimer.title !== timer.title ||
       (updatedTimer.endAt > now &&
         isInQuietHours(updatedTimer.endAt, params.quietHours))
     )
@@ -45,25 +47,22 @@ export function buildSystemAlarmUpdatePlan(params: {
     }
   }
 
-  const dismissedStableKeys = new Set(
-    alarmsToDismiss.map((timer) => timer.stableKey),
-  )
-  const existingStableKeysWithAlarm = new Set(
+  const dismissedAlarmIds = new Set(alarmsToDismiss.map((timer) => timer.id))
+  const retainedStableKeysWithAlarm = new Set(
     params.existing.timers
-      .filter((t) => t.systemAlarmId)
+      .filter(
+        (timer) => timer.systemAlarmId && !dismissedAlarmIds.has(timer.id),
+      )
       .map((t) => t.stableKey),
   )
   const missingActiveAlarms = params.updated.timers.filter((timer) => {
     if (timer.endAt <= now) {
       return false
     }
-    if (dismissedStableKeys.has(timer.stableKey)) {
-      return false
-    }
     if (timer.systemAlarmId) {
       return false
     }
-    if (existingStableKeysWithAlarm.has(timer.stableKey)) {
+    if (retainedStableKeysWithAlarm.has(timer.stableKey)) {
       return false
     }
     return true

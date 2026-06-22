@@ -205,6 +205,7 @@ export async function dismissSystemAlarm(
       [EXTRA_SEARCH_MODE]: ALARM_SEARCH_MODE_TIME,
       [EXTRA_HOUR]: target.hour,
       [EXTRA_MINUTES]: target.minute,
+      [EXTRA_SKIP_UI]: true,
     },
   })
 }

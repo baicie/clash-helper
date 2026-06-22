@@ -102,9 +102,47 @@ describe('app smoke tests', () => {
     expect(screen.queryByText('导入 / 更新村庄')).toBeNull()
     await fireEvent.press(screen.getByTestId('add-village-button'))
 
-    expect(screen.getByText('导入 / 更新村庄')).toBeTruthy()
+    expect(screen.getAllByText('导入新村庄')).toHaveLength(2)
     expect(screen.getByTestId('import-textarea')).toBeTruthy()
     expect(screen.getByTestId('import-button')).toBeTruthy()
+  })
+
+  it('opens a targeted update form from village details', async () => {
+    await saveVillages([createVillage('alarm')])
+    const screen = await render(<App />)
+
+    await fireEvent.press(await screen.findByTestId('village-item-#TEST'))
+    await fireEvent.press(screen.getByTestId('update-village-button'))
+
+    expect(screen.getAllByText('更新测试村庄')).toHaveLength(2)
+    expect(screen.getByTestId('import-textarea')).toBeTruthy()
+  })
+
+  it('does not dismiss existing alarms during automatic foreground sync', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+    const now = new Date(2026, 0, 1, 21).getTime()
+    jest.spyOn(Date, 'now').mockReturnValue(now)
+    const village = createVillage('alarm')
+    village.systemAlarmSyncEnabled = true
+    village.timers = [
+      {
+        ...village.timers[0],
+        endAt: new Date(2026, 0, 1, 23).getTime(),
+        systemAlarmId: 'existing-night-alarm',
+      },
+    ]
+    await saveVillages([village])
+
+    const screen = await render(<App />)
+    await screen.findByTestId('village-item-#TEST')
+
+    expect(IntentLauncher.startActivityAsync).not.toHaveBeenCalledWith(
+      'android.intent.action.DISMISS_ALARM',
+      expect.anything(),
+    )
   })
 
   it('renders empty villages state', async () => {
@@ -141,6 +179,27 @@ describe('app smoke tests', () => {
     )
   })
 
+  it('does not update an existing village from the new-village entry point', async () => {
+    await saveVillages([createVillage('alarm')])
+    const screen = await render(<App />)
+
+    await fireEvent.press(screen.getByTestId('add-village-button'))
+    await fireEvent.changeText(
+      screen.getByTestId('import-textarea'),
+      JSON.stringify({ tag: '#TEST', timestamp: 100 }),
+    )
+    await fireEvent.press(screen.getByTestId('import-button'))
+
+    expect(Alert.alert).toHaveBeenCalledWith(
+      '村庄已存在',
+      expect.stringContaining('点击右上角“更新”'),
+    )
+    expect(IntentLauncher.startActivityAsync).not.toHaveBeenCalledWith(
+      'android.intent.action.DISMISS_ALARM',
+      expect.anything(),
+    )
+  })
+
   it('reconciles system alarms when updating an existing village', async () => {
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
@@ -167,7 +226,8 @@ describe('app smoke tests', () => {
     })
 
     const screen = await render(<App />)
-    await fireEvent.press(screen.getByTestId('add-village-button'))
+    await fireEvent.press(await screen.findByTestId('village-item-#UPDATE'))
+    await fireEvent.press(screen.getByTestId('update-village-button'))
     await fireEvent.changeText(
       screen.getByTestId('import-textarea'),
       JSON.stringify({

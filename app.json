@@ -2,7 +2,7 @@
   "expo": {
     "name": "Clash Helper",
     "slug": "clash-helper",
-    "version": "0.0.0-beta.7",
+    "version": "0.0.0-beta.8",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -28,14 +28,8 @@
       "predictiveBackGestureEnabled": false
     },
     "plugins": ["expo-notifications"],
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "8b851851-3740-4249-997f-b2976d943b6a"
-      }
-    },
+    "web": { "favicon": "./assets/favicon.png" },
+    "extra": { "eas": { "projectId": "8b851851-3740-4249-997f-b2976d943b6a" } },
     "owner": "baicie"
   }
 }

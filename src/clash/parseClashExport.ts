@@ -103,7 +103,10 @@ function buildItemTitle(config: TimerGroupConfig, item: ClashExportItem) {
   // title stays readable (e.g. "夜世界建筑 · Lv.5" instead of
   // "夜世界建筑 · #1000036").
   const nameText = getClashDataName(item.data)
-  const levelText = typeof item.lvl === 'number' ? ` Lv.${item.lvl}` : ''
+  const levelText =
+    config.scope !== 'builder' && typeof item.lvl === 'number'
+      ? ` Lv.${item.lvl}`
+      : ''
 
   if (nameText) {
     return `${config.label} · ${nameText}${levelText}`
@@ -166,13 +169,20 @@ function applyReminderLeadMinutes(
 
   return timers.map((timer) => {
     const existingTimer = existingTimersByStableKey.get(timer.stableKey)
+    const unchangedAlarmTarget =
+      existingTimer?.endAt === timer.endAt &&
+      existingTimer.title === timer.title
 
     return {
       ...timer,
       reminderLeadMinutes:
         existingTimer?.reminderLeadMinutes ?? params.defaultReminderLeadMinutes,
-      systemAlarmId: existingTimer?.systemAlarmId,
-      systemAlarmCreatedAt: existingTimer?.systemAlarmCreatedAt,
+      systemAlarmId: unchangedAlarmTarget
+        ? existingTimer?.systemAlarmId
+        : undefined,
+      systemAlarmCreatedAt: unchangedAlarmTarget
+        ? existingTimer?.systemAlarmCreatedAt
+        : undefined,
       systemTimerId: existingTimer?.systemTimerId,
       systemTimerStartedAt: existingTimer?.systemTimerStartedAt,
     }

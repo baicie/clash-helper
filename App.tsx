@@ -455,12 +455,14 @@ export default function App() {
   const [testSecondsInput, setTestSecondsInput] = useState('5')
   const [now, setNow] = useState(() => Date.now())
   const [isImporting, setIsImporting] = useState(false)
+  const [updatingVillageId, setUpdatingVillageId] = useState<string>()
   const [storageLoaded, setStorageLoaded] = useState(false)
   const [alarmSyncRevision, setAlarmSyncRevision] = useState(0)
   const [renameState, setRenameState] = useState<RenameState | null>(null)
   const [expandedTimerId, setExpandedTimerId] = useState<string>()
   const startingSystemTimerRef = useRef<string | undefined>(undefined)
   const alarmSyncRunningRef = useRef(false)
+  const isImportingRef = useRef(false)
 
   useEffect(() => {
     initNotifications().catch(() => {
@@ -569,6 +571,7 @@ export default function App() {
     if (
       Platform.OS !== 'android' ||
       !storageLoaded ||
+      isImportingRef.current ||
       alarmSyncRunningRef.current
     ) {
       return
@@ -594,6 +597,7 @@ export default function App() {
           village,
           village,
           quietHoursSettingsRef.current,
+          false,
         )
 
         if (result.created > 0 || result.dismissed > 0) {
@@ -689,6 +693,7 @@ export default function App() {
     existing: VillageRecord,
     updated: VillageRecord,
     quietHours = quietHoursSettings,
+    dismissExisting = true,
   ) {
     if (Platform.OS !== 'android') {
       return {
@@ -710,8 +715,9 @@ export default function App() {
     let dismissed = 0
     let dismissFailed = 0
     const dismissedTimerIds = new Set<string>()
+    const alarmsToDismiss = dismissExisting ? plan.alarmsToDismiss : []
 
-    for (const timer of plan.alarmsToDismiss) {
+    for (const timer of alarmsToDismiss) {
       try {
         await dismissSystemAlarm(timer.endAt)
         dismissed += 1
@@ -780,21 +786,46 @@ export default function App() {
       return
     }
 
+    isImportingRef.current = true
     setIsImporting(true)
 
     try {
       const exported = parseClashVillageExportText(importText)
-      const incomingTag =
+      const rawIncomingTag =
         typeof exported.tag === 'string'
           ? exported.tag.trim().toUpperCase()
           : undefined
-
-      const existing = villages.find(
-        (village) =>
-          village.tag === incomingTag ||
-          village.id === incomingTag ||
-          village.tag.replace('#', '') === incomingTag?.replace('#', ''),
+      const incomingTag = rawIncomingTag
+        ? rawIncomingTag.startsWith('#')
+          ? rawIncomingTag
+          : `#${rawIncomingTag}`
+        : undefined
+      const updateTarget = updatingVillageId
+        ? villages.find((village) => village.id === updatingVillageId)
+        : undefined
+      const matchedExisting = villages.find(
+        (village) => village.tag === incomingTag || village.id === incomingTag,
       )
+
+      if (updatingVillageId && !updateTarget) {
+        throw new Error('要更新的村庄不存在，请返回首页重试')
+      }
+
+      if (updateTarget && updateTarget.tag !== incomingTag) {
+        throw new Error(
+          `JSON 属于 ${incomingTag ?? '未知村庄'}，当前要更新的是 ${updateTarget.tag}`,
+        )
+      }
+
+      if (!updateTarget && matchedExisting) {
+        Alert.alert(
+          '村庄已存在',
+          `请进入 ${matchedExisting.name}，点击右上角“更新”后再粘贴 JSON。`,
+        )
+        return
+      }
+
+      const existing = updateTarget
 
       if (existing) {
         try {
@@ -838,10 +869,9 @@ export default function App() {
 
       await persist(nextVillages)
 
-      if (!existing) {
-        setSelectedVillageId(scheduledVillage.id)
-        setCurrentView('village')
-      }
+      setSelectedVillageId(scheduledVillage.id)
+      setCurrentView('village')
+      setUpdatingVillageId(undefined)
       setImportText('')
 
       Alert.alert(
@@ -852,12 +882,37 @@ export default function App() {
       )
     } catch (error) {
       Alert.alert(
-        '导入失败',
+        updatingVillageId ? '更新失败' : '导入失败',
         error instanceof Error ? error.message : '未知错误',
       )
     } finally {
+      isImportingRef.current = false
       setIsImporting(false)
     }
+  }
+
+  function handleOpenNewVillageImport() {
+    setUpdatingVillageId(undefined)
+    setImportText('')
+    setCurrentView('import')
+  }
+
+  function handleOpenVillageUpdate(village: VillageRecord) {
+    setSelectedVillageId(village.id)
+    setUpdatingVillageId(village.id)
+    setImportText('')
+    setCurrentView('import')
+  }
+
+  function handleBack() {
+    if (currentView === 'import' && updatingVillageId) {
+      setUpdatingVillageId(undefined)
+      setCurrentView('village')
+      return
+    }
+
+    setUpdatingVillageId(undefined)
+    setCurrentView('home')
   }
 
   function handleOpenRenameVillage(village: VillageRecord) {
@@ -1350,9 +1405,7 @@ export default function App() {
             <Pressable
               testID={currentView === 'home' ? 'menu-button' : 'back-button'}
               onPress={() =>
-                currentView === 'home'
-                  ? setMenuVisible(true)
-                  : setCurrentView('home')
+                currentView === 'home' ? setMenuVisible(true) : handleBack()
               }
               style={styles.menuButton}
             >
@@ -1364,7 +1417,7 @@ export default function App() {
             {currentView === 'home' ? (
               <Pressable
                 testID="add-village-button"
-                onPress={() => setCurrentView('import')}
+                onPress={handleOpenNewVillageImport}
                 style={styles.headerAction}
               >
                 <Text style={styles.headerActionText}>+</Text>
@@ -1372,7 +1425,11 @@ export default function App() {
             ) : null}
           </View>
           {currentView === 'import' ? (
-            <Text style={styles.subtitle}>导入新村庄或更新已有村庄</Text>
+            <Text style={styles.subtitle}>
+              {updatingVillageId
+                ? `更新${selectedVillage?.name ?? ''}`
+                : '导入新村庄'}
+            </Text>
           ) : null}
         </View>
 
@@ -1416,7 +1473,11 @@ export default function App() {
 
         {currentView === 'import' ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>导入 / 更新村庄</Text>
+            <Text style={styles.cardTitle}>
+              {updatingVillageId
+                ? `更新${selectedVillage?.name ?? '村庄'}`
+                : '导入新村庄'}
+            </Text>
             <TextInput
               testID="import-textarea"
               value={importText}
@@ -1443,7 +1504,11 @@ export default function App() {
                   isImporting && styles.importButtonTextDisabled,
                 ]}
               >
-                {isImporting ? '正在解析...' : '解析并保存'}
+                {isImporting
+                  ? '正在解析...'
+                  : updatingVillageId
+                    ? '更新并同步闹钟'
+                    : '导入村庄'}
               </Text>
             </Pressable>
           </View>
@@ -1459,6 +1524,14 @@ export default function App() {
                 </View>
 
                 <View style={styles.actionRow}>
+                  <Pressable
+                    testID="update-village-button"
+                    onPress={() => handleOpenVillageUpdate(selectedVillage)}
+                    style={styles.textButton}
+                  >
+                    <Text style={styles.primaryText}>更新</Text>
+                  </Pressable>
+
                   <Pressable
                     testID="rename-village-button"
                     onPress={() => handleOpenRenameVillage(selectedVillage)}

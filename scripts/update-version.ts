@@ -1,15 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { syncAppVersion } from './version-sync'
 
-const pkgJsonPath = resolve('package.json')
-const versionFilePath = resolve('src/version.ts')
+const version = await syncAppVersion(process.cwd(), process.argv[2])
 
-const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8'))
-const version = pkg.version as string
-
-const content = `export const APP_VERSION = '${version}'
-`
-
-writeFileSync(versionFilePath, content, 'utf-8')
-
-console.log(`Updated src/version.ts → ${version}`)
+console.log(`Synced package.json and app.json -> ${version}`)

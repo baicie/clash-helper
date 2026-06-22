@@ -128,4 +128,55 @@ describe('alarmReconciliation', () => {
     // The timer already had an alarm — it is dismissed, not skipped from creation.
     expect(plan.quietHoursSkipped).toBe(0)
   })
+
+  it('replaces an alarm when the same project completion time changes', () => {
+    const existingTimer = {
+      ...createTimer({
+        id: 'upgrade-old',
+        endAt: new Date(2026, 0, 1, 12).getTime(),
+      }),
+      systemAlarmId: 'alarm-old',
+    }
+    const updatedTimer = {
+      ...createTimer({
+        id: 'upgrade-new',
+        endAt: new Date(2026, 0, 1, 13).getTime(),
+      }),
+      stableKey: existingTimer.stableKey,
+    }
+    const plan = buildSystemAlarmUpdatePlan({
+      existing: createVillage([existingTimer]),
+      updated: createVillage([updatedTimer]),
+      now: new Date(2026, 0, 1, 11).getTime(),
+      quietHours: { enabled: false, startHour: 22, endHour: 10 },
+    })
+
+    expect(plan.alarmsToDismiss).toEqual([existingTimer])
+    expect(plan.alarmsToCreate).toEqual([updatedTimer])
+  })
+
+  it('replaces an alarm when a legacy numbered title is cleaned up', () => {
+    const existingTimer = {
+      ...createTimer({
+        id: 'builder-upgrade',
+        endAt: new Date(2026, 0, 1, 12).getTime(),
+      }),
+      title: '夜世界建筑 · 双管加农炮 Lv.5',
+      systemAlarmId: 'alarm-numbered-title',
+    }
+    const updatedTimer = {
+      ...existingTimer,
+      title: '夜世界建筑 · 双管加农炮',
+      systemAlarmId: undefined,
+    }
+    const plan = buildSystemAlarmUpdatePlan({
+      existing: createVillage([existingTimer]),
+      updated: createVillage([updatedTimer]),
+      now: new Date(2026, 0, 1, 11).getTime(),
+      quietHours: { enabled: false, startHour: 22, endHour: 10 },
+    })
+
+    expect(plan.alarmsToDismiss).toEqual([existingTimer])
+    expect(plan.alarmsToCreate).toEqual([updatedTimer])
+  })
 })

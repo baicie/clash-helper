@@ -169,6 +169,7 @@ describe('systemAlarmService', () => {
           'android.intent.extra.alarm.SEARCH_MODE': 'android.time',
           'android.intent.extra.alarm.HOUR': 7,
           'android.intent.extra.alarm.MINUTES': 30,
+          'android.intent.extra.alarm.SKIP_UI': true,
         },
       },
     )
