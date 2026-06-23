@@ -346,6 +346,48 @@ describe('app smoke tests', () => {
     )
   })
 
+  it('uses the builder building name and level in the list and alarm label', async () => {
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
+    })
+    jest.spyOn(Date, 'now').mockReturnValue(100_000)
+    const village = createVillageFromExport(
+      {
+        tag: '#BUILDER',
+        timestamp: 100,
+        buildings2: [{ data: 1000041, lvl: 5, timer: 60 }],
+      },
+      { importedAt: 100_000 },
+    )
+    await saveVillages([village])
+    await saveSettings({
+      defaultNotificationMode: 'alarm',
+      defaultReminderLeadMinutes: 0,
+      quietHoursEnabled: false,
+      quietHoursStart: 22,
+      quietHoursEnd: 10,
+    })
+
+    const screen = await render(<App />)
+    await fireEvent.press(await screen.findByTestId('village-item-#BUILDER'))
+
+    expect(screen.getByText('夜世界建筑 · 双管加农炮 Lv.5')).toBeTruthy()
+    await fireEvent.press(screen.getByTestId('create-all-system-alarms-button'))
+
+    await waitFor(() =>
+      expect(IntentLauncher.startActivityAsync).toHaveBeenCalledWith(
+        'android.intent.action.SET_ALARM',
+        expect.objectContaining({
+          extra: expect.objectContaining({
+            'android.intent.extra.alarm.MESSAGE':
+              '夜世界建筑 · 双管加农炮 Lv.5',
+          }),
+        }),
+      ),
+    )
+  })
+
   it('does not create alarms automatically when the app starts', async () => {
     Object.defineProperty(Platform, 'OS', {
       configurable: true,

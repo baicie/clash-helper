@@ -103,10 +103,7 @@ function buildItemTitle(config: TimerGroupConfig, item: ClashExportItem) {
   // title stays readable (e.g. "夜世界建筑 · Lv.5" instead of
   // "夜世界建筑 · #1000036").
   const nameText = getClashDataName(item.data)
-  const levelText =
-    config.scope !== 'builder' && typeof item.lvl === 'number'
-      ? ` Lv.${item.lvl}`
-      : ''
+  const levelText = typeof item.lvl === 'number' ? ` Lv.${item.lvl}` : ''
 
   if (nameText) {
     return `${config.label} · ${nameText}${levelText}`

@@ -170,14 +170,21 @@ describe('parseClashExport', () => {
     expect(unknown?.title).toBe('主世界建筑 Lv.3')
   })
 
-  it('keeps builder-base alarm titles free of numeric identifiers', () => {
+  it('uses concrete names and levels for builder-base list and alarm titles', () => {
     const timers = parseTimersFromExport(sample, '#R2J0CRJYR', 1781860781000)
-    const builderTimers = timers.filter((timer) => timer.scope === 'builder')
+    const goldStorage = timers.find(
+      (timer) => timer.sourceGroup === 'buildings2' && timer.dataId === 1000038,
+    )
+    const elixirStorage = timers.find(
+      (timer) => timer.sourceGroup === 'buildings2' && timer.dataId === 1000036,
+    )
+    const cannonCart = timers.find(
+      (timer) => timer.sourceGroup === 'units2' && timer.dataId === 4000037,
+    )
 
-    expect(builderTimers).not.toHaveLength(0)
-    expect(
-      builderTimers.every((timer) => !/#\d+|Lv\.\d+/.test(timer.title)),
-    ).toBe(true)
+    expect(goldStorage?.title).toBe('夜世界建筑 · 金库 Lv.5')
+    expect(elixirStorage?.title).toBe('夜世界建筑 · 圣水瓶 Lv.5')
+    expect(cannonCart?.title).toBe('夜世界兵种研究 · 加农炮战车 Lv.8')
   })
 
   it('advances continuous countdown to the next nearest timer', () => {
